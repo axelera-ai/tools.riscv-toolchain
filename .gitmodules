@@ -1,0 +1,6 @@
+[submodule "tools.llvm-project"]
+	path = tools.llvm-project
+	url = git@github.com:axelera-ai/tools.llvm-project.git
+[submodule "riscv-gnu-toolchain"]
+	path = riscv-gnu-toolchain
+	url = git@github.com:riscv-collab/riscv-gnu-toolchain.git
