@@ -1,0 +1,74 @@
+FROM centos:7 AS build
+
+# Patch outdated CentOS versions
+RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* && \
+    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+
+# Install the necessary packages
+RUN yum -y update && \
+    yum -y groupinstall "Development Tools" && \
+    yum -y install gmp-devel mpfr-devel libmpc-devel zlib-devel texinfo wget bzip2 zip python && \
+    yum -y install dh-autoreconf curl-devel expat-devel openssl-devel gettext-devel perl-devel asciidoc xmlto getopt libffi-devel && \
+    yum -y install redhat-lsb && \
+    yum clean all
+
+# One file has a different name
+RUN ln -s /usr/bin/db2x_docbook2texi /usr/bin/docbook2x-texi
+
+WORKDIR /tmp
+RUN wget https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.43.5.tar.gz && \
+    tar -xzf git-2.43.5.tar.gz
+WORKDIR /tmp/git-2.43.5
+RUN make prefix=/usr/local all CFLAGS="-std=gnu99 -g -O2 -Wall" && \
+    make prefix=/usr/local install CFLAGS="-std=gnu99 -g -O2 -Wall"
+
+# FIXME
+WORKDIR /tmp
+RUN wget https://www.openssl.org/source/old/1.1.1/openssl-1.1.1w.tar.gz && \
+    tar -xzf openssl-1.1.1w.tar.gz
+WORKDIR /tmp/openssl-1.1.1w
+RUN ./config --prefix=/usr/local/openssl --openssldir=/usr/local/openssl shared zlib && \
+    make && \
+    make install
+
+WORKDIR /tmp
+RUN wget https://www.python.org/ftp/python/3.11.9/Python-3.11.9.tgz && \
+    tar -xzf Python-3.11.9.tgz
+WORKDIR /tmp/Python-3.11.9
+RUN LDFLAGS="${LDFLAGS} -Wl,-rpath=/usr/local/openssl/lib" ./configure --with-openssl=/usr/local/openssl --with-openssl-rpath=/usr/local/openssl/lib && \
+    make && \
+    make install
+
+WORKDIR /tmp
+RUN wget "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -O "awscliv2.zip" && \
+    unzip awscliv2.zip && \
+    ./aws/install
+
+WORKDIR /tmp
+RUN wget https://github.com/ninja-build/ninja/archive/refs/tags/v1.10.2.tar.gz && \
+    tar xzf v1.10.2.tar.gz
+WORKDIR /tmp/ninja-1.10.2
+RUN ./configure.py --bootstrap && \
+    mv ./ninja /usr/local/bin
+
+FROM ghcr.io/axelera-ai/centos7-toolchain:v0.2
+
+# Copy tools from the build stage
+COPY --from=build /usr/local /usr/local
+
+USER root
+
+# Patch outdated CentOS versions
+RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* && \
+    sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+
+# Install the necessary packages
+RUN yum -y update && \
+    yum -y install redhat-lsb && \
+    yum clean all
+
+USER dockeruser
+
+ENV LD_LIBRARY_PATH="/usr/local/lib:/usr/local/lib64:$LD_LIBRARY_PATH"
+ENV CC=gcc
+ENV CXX=g++
