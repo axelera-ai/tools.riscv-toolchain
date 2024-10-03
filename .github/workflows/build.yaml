@@ -13,17 +13,13 @@ jobs:
   build:
     strategy:
       matrix:
-        os:  [ubuntu-20.04, ubuntu-latest]
+        os:  [ci-prod-AWS-CPU-X86_64-EKS, ci-prod-AWS-CPU-X86_64-EKS]
         include:
-          - os: ubuntu-20.04
+          - os: ci-prod-AWS-CPU-X86_64-EKS
             container: false
-            label: ubuntu20
+            label: ubuntu
             arch: amd64
-          - os: ubuntu-22.04
-            container: false
-            label: ubuntu22
-            arch: amd64
-          - os: ubuntu-latest
+          - os: ci-prod-AWS-CPU-X86_64-EKS
             container: ghcr.io/axelera-ai/centos7-toolchain:v0.2
             label: centos7
             arch: amd64
@@ -52,7 +48,7 @@ jobs:
     # The build process uses vast amount of storage space so we need to make
     # some more space with this action.
     # - name: Free Disk Space
-    #   if: ${{ contains( matrix.os, 'ubuntu') }}
+    #   if: ${{ contains( matrix.label, 'ubuntu') }}
     #   uses: jlumbroso/free-disk-space@main
     #   with:
     #     # this might remove tools that are actually needed,
@@ -60,13 +56,13 @@ jobs:
     #     tool-cache: false
 
     - name: Set up Python
-      if: ${{ contains( matrix.os, 'ubuntu') }}
+      if: ${{ contains( matrix.label, 'ubuntu') }}
       uses: actions/setup-python@v5
       with:
         python-version: '3.x'
 
     - name: Install dependencies
-      if: ${{ contains( matrix.os, 'ubuntu') }}
+      if: ${{ contains( matrix.label, 'ubuntu') }}
       run: |
         sudo apt-get update && \
         sudo apt-get install -y \
