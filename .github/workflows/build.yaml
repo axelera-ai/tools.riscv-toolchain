@@ -13,7 +13,8 @@ jobs:
   build:
     strategy:
       matrix:
-        os:  [ci-prod-AWS-CPU-X86_64-EKS, ci-prod-AWS-CPU-X86_64-EKS]
+        os:  [ci-prod-AWS-CPU-X86_64-EKS]
+        label: [ubuntu, centos7]
         include:
           - os: ci-prod-AWS-CPU-X86_64-EKS
             container: false
