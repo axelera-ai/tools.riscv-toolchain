@@ -102,11 +102,19 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    # We need SSH set-up to get our private LLVM fork.
-    - name: Set up SSH
-      uses: webfactory/ssh-agent@v0.9.0
+    - name: Execute keyscan for repo servers
+      run: |
+        [[ -e ~/.ssh/known_hosts ]] && ssh-keygen -R github.com || true
+        mkdir -p ~/.ssh
+        ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+      shell: bash
+
+    - name: Install SSH key
+      uses: shimataro/ssh-key-action@v2.7.0
       with:
-        ssh-private-key: ${{ secrets.TOOLS_LLVM_DEPLOY_KEY }}
+        key: ${{ secrets.TOOLS_LLVM_DEPLOY_KEY }}
+        known_hosts: ${{ secrets.CI_KNOWN_HOSTS }}
+        if_key_exists: replace
 
     - name: Build Toolchain (container)
       if: ${{ matrix.container != false }}
