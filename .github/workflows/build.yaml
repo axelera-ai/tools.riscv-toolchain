@@ -13,7 +13,7 @@ jobs:
   build:
     strategy:
       matrix:
-        os:  [ci-prod-AWS-CPU-X86_64-EKS]
+        os:  [ci-prod-AWS-CPU-X86_64-EKS, ci-prod-AWS-CPU-ARM64-NATIVE]
         label: [ubuntu, centos7]
         include:
           - os: ci-prod-AWS-CPU-X86_64-EKS
@@ -28,6 +28,11 @@ jobs:
             container: false
             label: macos
             arch: arm64
+          - os: ci-prod-AWS-CPU-ARM64-NATIVE
+            arch: arm64
+        exclude:
+          - os: ci-prod-AWS-CPU-ARM64-NATIVE
+            label: [centos]
 
     runs-on: ${{ matrix.os }}
 
