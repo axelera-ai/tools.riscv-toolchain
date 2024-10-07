@@ -1,0 +1,7 @@
+Package: riscv64-unknown-elf-toolchain-axelera-@PKG_VERSION@-@PKG_RELEASE_NUMBER@
+Maintainer: Axelera AI
+Priority: optional
+Architecture: @DEB_PKG_ARCH@
+Version: @PKG_VERSION@
+Depends: @PKG_DEPENDS@
+Description: Axelera internal RISC-V toolchain containing a newlib toolchain GCC and LLVM with custom patches.
