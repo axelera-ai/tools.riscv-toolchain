@@ -56,12 +56,11 @@ download_prerequisites_binutils() {
   download_and_extract "mpfr" "${LIBMPFR_VERS}" "https://ftp.gnu.org/gnu/mpfr/mpfr"
 }
 
+
 # Build binutils
 clone_if_not_exists ${BINUTILS_BRANCH} https://gnu.googlesource.com/binutils-gdb
-
 mkdir -p ${BUILDPREFIX}/binutils-gdb
 cd ${BUILDPREFIX}/binutils-gdb
-download_prerequisites_binutils
 
 CFLAGS="-O2 -Wno-error=implicit-function-declaration"   \
 CXXFLAGS="-O2 -Wno-error=implicit-function-declaration" \
@@ -84,9 +83,13 @@ rm -rf binutils-gdb
 # Build GDB
 clone_if_not_exists ${GDB_BRANCH} https://gnu.googlesource.com/binutils-gdb
 
+cd binutils-gdb
+download_prerequisites_binutils
+cd ..
+
 mkdir -p ${BUILDPREFIX}/binutils-gdb
 cd ${BUILDPREFIX}/binutils-gdb
-download_prerequisites_binutils
+
 CFLAGS="-O2 -Wno-error=implicit-function-declaration"   \
 CXXFLAGS="-O2 -Wno-error=implicit-function-declaration" \
 ../../binutils-gdb/configure                            \
@@ -95,11 +98,11 @@ CXXFLAGS="-O2 -Wno-error=implicit-function-declaration" \
     --with-expat                                        \
     --disable-werror                                    \
     --enable-gdb                                        \
-	--disable-gas                                       \
-	--disable-binutils                                  \
-	--disable-ld                                        \
-	--disable-gold                                      \
-	--disable-gprof                                     \
+	  --disable-gas                                       \
+	  --disable-binutils                                  \
+	  --disable-ld                                        \
+	  --disable-gold                                      \
+	  --disable-gprof                                     \
     ${EXTRA_OPTS}                                       \
     ${EXTRA_BINUTILS_OPTS}
 make -j${NPROC}
