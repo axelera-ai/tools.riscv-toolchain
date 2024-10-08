@@ -1,0 +1,204 @@
+name: Build and Release Toolchain
+
+on:
+  workflow_dispatch:    # Trigger on manual run
+  release:              # Trigger on release
+    types:
+      - published
+env:
+  PKG_NAME: axelera-riscv64-unknown-elf-toolchain
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os:  [ci-prod-AWS-CPU-X86_64-EKS, ci-prod-AWS-CPU-ARM64-NATIVE]
+        label: [ubuntu-20.04, centos7]
+        exclude:
+          - os: ci-prod-AWS-CPU-ARM64-NATIVE
+          - label: centos7
+        include:
+          - os: ci-prod-AWS-CPU-X86_64-EKS
+            container: false
+            label: ubuntu-20.04
+            arch: amd64
+          - os: ci-prod-AWS-CPU-X86_64-EKS
+            container: ghcr.io/axelera-ai/centos7-toolchain:v0.2
+            label: centos7
+            arch: amd64
+          - os: [macOS, self-hosted]
+            container: false
+            label: macos
+            arch: arm64
+          - os: ci-prod-AWS-CPU-ARM64-NATIVE
+            container: false
+            label: ubuntu-20.04
+            arch: arm64
+
+    runs-on: ${{ matrix.os }}
+
+    name: Build and package (${{ matrix.label }}, ${{ matrix.arch }})
+    steps:
+
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Install dependencies
+      if: ${{ !contains(matrix.os, 'macOS') }}
+      run: |
+        (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
+          && sudo mkdir -p -m 755 /etc/apt/keyrings \
+          && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+          && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt-key adv --fetch-keys https://apt.kitware.com/keys/kitware-archive-latest.asc
+        DISTRO_CODENAME=$(lsb_release -cs)
+        sudo apt-add-repository "deb https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main"
+        sudo apt-get update && \
+        sudo apt-get install -y \
+        autoconf \
+        automake \
+        autotools-dev \
+        curl \
+        python3 \
+        python-is-python3 \
+        python3-pip \
+        libmpc-dev \
+        gawk \
+        build-essential \
+        bison \
+        flex \
+        texinfo \
+        gperf \
+        libtool \
+        patchutils \
+        bc \
+        zlib1g-dev \
+        libexpat-dev \
+        ninja-build \
+        git \
+        libglib2.0-dev \
+        libslirp-dev \
+        fakeroot \
+        gh \
+        cmake
+
+    - name: Log in to GHCR
+      if: matrix.container != false
+      uses: docker/login-action@v3.3.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_PAT }}
+
+    - name: Pull container image
+      if: matrix.container != false
+      run: docker pull ${{ matrix.container }}
+
+    - name: Execute keyscan for repo servers
+      run: |
+        [[ -e ~/.ssh/known_hosts ]] && ssh-keygen -R github.com || true
+        mkdir -p ~/.ssh
+        ssh-keyscan -H github.com >> ~/.ssh/known_hosts
+      shell: bash
+
+    - uses: webfactory/ssh-agent@v0.9.0
+      with:
+          ssh-private-key: ${{ secrets.TOOLS_LLVM_DEPLOY_KEY }}
+
+    - name: Build Toolchain (container)
+      if:  matrix.container != false
+      run: |
+          source ./versions.sh
+          git clone --depth 1 --single-branch --branch $LLVM_BRANCH git@github.com:axelera-ai/tools.llvm-project.git llvm-project
+          docker run --rm -v ${{ github.workspace }}:/workspace \
+            -v /etc/passwd:/etc/passwd:ro \
+            -v /etc/group:/etc/group:ro  \
+            -w /workspace -u $(id -u):$(id -g) \
+            ${{ matrix.container }} bash -c "./build_toolchain.sh"
+
+    - name: Build Toolchain (native)
+      if: matrix.container == false
+      run: ./build_toolchain.sh
+
+    - name: Re-name and archive the build directory
+      run: |
+        ARCHIVE_NAME="${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}"
+        mv install ${{ env.PKG_NAME }}
+        tar -czf "$ARCHIVE_NAME.tar.gz" ${{ env.PKG_NAME }}
+
+    # Create `deb` file
+    - name: Create DEBIAN directory
+      if: contains(matrix.label, 'ubuntu')
+      run: |
+        mkdir -p ${{ env.PKG_NAME }}/DEBIAN
+        find ${{ env.PKG_NAME }} -type d | xargs chmod 755
+
+    - name: Create control file with version
+      if: contains(matrix.label, 'ubuntu')
+      run: |
+          cat ${{ env.PKG_NAME }}/VERSION
+          source ${{ env.PKG_NAME }}/VERSION
+          DEB_PKG_ARCH="${{ matrix.arch }}"
+
+          # Use sed to replace the placeholders with actual values
+          sed -e "s|@PKG_VERSION@|${GIT_SEMVER_FROM_TAG}|" \
+              -e "s|@PKG_NAME@|${{ env.PKG_NAME }}|" \
+              -e "s|@PKG_RELEASE_NUMBER@|${PKG_RELEASE_NUMBER}|" \
+              -e "s|@DEB_PKG_ARCH@|${DEB_PKG_ARCH}|" \
+              -e "s|@PKG_DEPENDS@|${PKG_DEPENDS}|" \
+              debian-pkg-control.in > ${{ env.PKG_NAME }}/DEBIAN/control
+
+    - name: Build .deb package
+      if: contains(matrix.label, 'ubuntu')
+      run: |
+        fakeroot dpkg-deb --build ${{ env.PKG_NAME }}
+        mv ${{ env.PKG_NAME }}.deb ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb
+
+    # Upload the build artifacts
+    - name: Upload (.deb) build artifact
+      if: contains(matrix.label, 'ubuntu')
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb
+        path: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb
+
+    - name: Upload (.tar.gz) build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
+        path: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
+
+    - name: Upload (.deb) to release
+      if: github.event_name == 'release'
+      run: |
+        gh release upload ${{ github.event.release.tag_name }} \
+        ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz --clobber
+      env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload (.tar.gz) to release
+      if: github.event_name == 'release' && contains(matrix.label, 'ubuntu')
+      run: |
+        gh release upload ${{ github.event.release.tag_name }} \
+        ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb --clobber
+      env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-release-description:
+    name: Update release description with version info
+    runs-on: ubuntu-latest
+    needs: build   # This ensures the job runs after all matrix jobs
+    if: github.event_name == 'release'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update release description
+        run: |
+          gh release edit ${{ github.event.release.tag_name }} \
+            --notes-file versions.sh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
