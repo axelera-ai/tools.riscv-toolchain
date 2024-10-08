@@ -41,21 +41,21 @@ jobs:
     name: Build and package (${{ matrix.label }}, ${{ matrix.arch }})
 
     steps:
-    - name: Log in to GHCR
-      if: ${{ matrix.container != false }}
-      uses: docker/login-action@v3.3.0
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_PAT }}
 
-    - name: Pull container image
-      if: ${{ matrix.container != false }}
-      run: docker pull ${{ matrix.container }}
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
     - name: Install dependencies
-      if: ${{ contains( matrix.label, 'ubuntu') }}
+      if: ${{ !contains(matrix.os, 'macOS') }}
       run: |
+        (type -p wget >/dev/null || (sudo apt update && sudo apt-get install wget -y)) \
+          && sudo mkdir -p -m 755 /etc/apt/keyrings \
+          && wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+          && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+          && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+        sudo apt-key adv --fetch-keys https://apt.kitware.com/keys/kitware-archive-latest.asc
+        DISTRO_CODENAME=$(lsb_release -cs)
+        sudo apt-add-repository "deb https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main"
         sudo apt-get update && \
         sudo apt-get install -y \
         autoconf \
@@ -83,17 +83,21 @@ jobs:
         git \
         libglib2.0-dev \
         libslirp-dev \
-        fakeroot
-        sudo apt-key adv --fetch-keys https://apt.kitware.com/keys/kitware-archive-latest.asc
-        DISTRO_CODENAME=$(lsb_release -cs)
-        echo "Using distribution codename: $DISTRO_CODENAME"
-        sudo apt-add-repository "deb https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main"
-        sudo apt-get update
-        sudo apt-get install -y cmake
-        sudo apt-get clean
+        fakeroot \
+        gh \
+        cmake
 
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - name: Log in to GHCR
+      if: matrix.container != false
+      uses: docker/login-action@v3.3.0
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GHCR_PAT }}
+
+    - name: Pull container image
+      if: matrix.container != false
+      run: docker pull ${{ matrix.container }}
 
     - name: Execute keyscan for repo servers
       run: |
@@ -107,7 +111,7 @@ jobs:
           ssh-private-key: ${{ secrets.TOOLS_LLVM_DEPLOY_KEY }}
 
     - name: Build Toolchain (container)
-      if: ${{ matrix.container != false }}
+      if:  matrix.container != false
       run: |
           source ./versions.sh
           git clone --depth 1 --single-branch --branch $LLVM_BRANCH git@github.com:axelera-ai/tools.llvm-project.git llvm-project
@@ -118,7 +122,7 @@ jobs:
             ${{ matrix.container }} bash -c "./build_toolchain.sh"
 
     - name: Build Toolchain (native)
-      if: ${{ matrix.container == false }}
+      if: matrix.container == false
       run: ./build_toolchain.sh
 
     - name: Archive the build directory
@@ -127,13 +131,13 @@ jobs:
 
     # Create `deb` file
     - name: Create DEBIAN directory
-      if: ${{ contains( matrix.label, 'ubuntu') }}
+      if: contains(matrix.label, 'ubuntu')
       run: |
         mkdir -p riscv64-unknown-elf-toolchain-axelera/DEBIAN
         find riscv64-unknown-elf-toolchain-axelera -type d | xargs chmod 755
 
     - name: Create control file with version
-      if: ${{ contains( matrix.label, 'ubuntu') }}
+      if: contains(matrix.label, 'ubuntu')
       run: |
           source versions.sh
           DEB_PKG_ARCH="${{ matrix.arch }}"
@@ -147,14 +151,14 @@ jobs:
               debian-pkg-control.in > riscv64-unknown-elf-toolchain-axelera/DEBIAN/control
 
     - name: Build DEB package
-      if: ${{ contains( matrix.label, 'ubuntu') }}
+      if: contains(matrix.label, 'ubuntu')
       run: |
         fakeroot dpkg-deb --build riscv64-unknown-elf-toolchain-axelera
         mv riscv64-unknown-elf-toolchain-axelera.deb riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.deb
 
     # Upload the build artifacts
     - name: Upload build artifact
-      if: ${{ contains( matrix.label, 'ubuntu') }}
+      if: contains(matrix.label, 'ubuntu')
       uses: actions/upload-artifact@v4
       with:
         name: riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.deb
@@ -167,7 +171,7 @@ jobs:
         path: riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
 
     - name: Upload to Release
-      if: github.event_name == 'release' && contains( matrix.label, 'ubuntu')
+      if: github.event_name == 'release'
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
         riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
@@ -175,7 +179,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload to Release
-      if: github.event_name == 'release' && contains( matrix.label, 'ubuntu')
+      if: github.event_name == 'release' && contains(matrix.label, 'ubuntu')
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
         riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.deb
