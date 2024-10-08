@@ -1,0 +1,7 @@
+Package: @PKG_NAME@-@PKG_VERSION@-@PKG_RELEASE_NUMBER@
+Maintainer: Axelera AI
+Priority: optional
+Architecture: @DEB_PKG_ARCH@
+Version: @PKG_VERSION@-@PKG_RELEASE_NUMBER@
+Depends: @PKG_DEPENDS@
+Description: Axelera internal RISC-V toolchain containing a newlib GCC toolchain and LLVM with custom patches (https://github.com/axelera-ai/tools.llvm-project).

@@ -1,0 +1,8 @@
+binutils-gdb
+build
+install
+gcc
+newlib
+llvm-project
+*.tar.gz
+riscv64-unknown-elf-toolchain-axelera
