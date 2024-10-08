@@ -1,27 +1,26 @@
-name: Build Toolchain
+name: Build and Release Toolchain
 
 on:
-  pull_request:
-    types: [synchronize, opened, reopened, ready_for_review]
-    branches: [ "main" ]
   workflow_dispatch:    # Trigger on manual run
   release:              # Trigger on release
     types:
       - published
+env:
+  PKG_NAME: axelera-riscv64-unknown-elf-toolchain
 
 jobs:
   build:
     strategy:
       matrix:
         os:  [ci-prod-AWS-CPU-X86_64-EKS, ci-prod-AWS-CPU-ARM64-NATIVE]
-        label: [ubuntu, centos7]
+        label: [ubuntu-20.04, centos7]
         exclude:
           - os: ci-prod-AWS-CPU-ARM64-NATIVE
           - label: centos7
         include:
           - os: ci-prod-AWS-CPU-X86_64-EKS
             container: false
-            label: ubuntu
+            label: ubuntu-20.04
             arch: amd64
           - os: ci-prod-AWS-CPU-X86_64-EKS
             container: ghcr.io/axelera-ai/centos7-toolchain:v0.2
@@ -33,17 +32,18 @@ jobs:
             arch: arm64
           - os: ci-prod-AWS-CPU-ARM64-NATIVE
             container: false
-            label: ubuntu
+            label: ubuntu-20.04
             arch: arm64
 
     runs-on: ${{ matrix.os }}
 
     name: Build and package (${{ matrix.label }}, ${{ matrix.arch }})
-
     steps:
 
     - name: Checkout repository
       uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Install dependencies
       if: ${{ !contains(matrix.os, 'macOS') }}
@@ -66,8 +66,6 @@ jobs:
         python-is-python3 \
         python3-pip \
         libmpc-dev \
-        libmpfr-dev \
-        libgmp-dev \
         gawk \
         build-essential \
         bison \
@@ -125,63 +123,82 @@ jobs:
       if: matrix.container == false
       run: ./build_toolchain.sh
 
-    - name: Archive the build directory
+    - name: Re-name and archive the build directory
       run: |
-        tar -czf riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.tar.gz riscv64-unknown-elf-toolchain-axelera
+        ARCHIVE_NAME="${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}"
+        mv install ${{ env.PKG_NAME }}
+        tar -czf "$ARCHIVE_NAME.tar.gz" ${{ env.PKG_NAME }}
 
     # Create `deb` file
     - name: Create DEBIAN directory
       if: contains(matrix.label, 'ubuntu')
       run: |
-        mkdir -p riscv64-unknown-elf-toolchain-axelera/DEBIAN
-        find riscv64-unknown-elf-toolchain-axelera -type d | xargs chmod 755
+        mkdir -p ${{ env.PKG_NAME }}/DEBIAN
+        find ${{ env.PKG_NAME }} -type d | xargs chmod 755
 
     - name: Create control file with version
       if: contains(matrix.label, 'ubuntu')
       run: |
-          source versions.sh
+          cat ${{ env.PKG_NAME }}/VERSION
+          source ${{ env.PKG_NAME }}/VERSION
           DEB_PKG_ARCH="${{ matrix.arch }}"
-          PKG_VERSION=$(echo ${{ github.sha }} | cut -c1-12)
 
           # Use sed to replace the placeholders with actual values
-          sed -e "s/@PKG_VERSION@/${PKG_VERSION}/" \
-              -e "s/@PKG_RELEASE_NUMBER@/${PKG_RELEASE_NUMBER}/" \
-              -e "s/@DEB_PKG_ARCH@/${DEB_PKG_ARCH}/" \
-              -e "s/@PKG_DEPENDS@/${PKG_DEPENDS}/" \
-              debian-pkg-control.in > riscv64-unknown-elf-toolchain-axelera/DEBIAN/control
+          sed -e "s|@PKG_VERSION@|${GIT_SEMVER_FROM_TAG}|" \
+              -e "s|@PKG_NAME@|${{ env.PKG_NAME }}|" \
+              -e "s|@PKG_RELEASE_NUMBER@|${PKG_RELEASE_NUMBER}|" \
+              -e "s|@DEB_PKG_ARCH@|${DEB_PKG_ARCH}|" \
+              -e "s|@PKG_DEPENDS@|${PKG_DEPENDS}|" \
+              debian-pkg-control.in > ${{ env.PKG_NAME }}/DEBIAN/control
 
-    - name: Build DEB package
+    - name: Build .deb package
       if: contains(matrix.label, 'ubuntu')
       run: |
-        fakeroot dpkg-deb --build riscv64-unknown-elf-toolchain-axelera
-        mv riscv64-unknown-elf-toolchain-axelera.deb riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.deb
+        fakeroot dpkg-deb --build ${{ env.PKG_NAME }}
+        mv ${{ env.PKG_NAME }}.deb ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb
 
     # Upload the build artifacts
-    - name: Upload build artifact
+    - name: Upload (.deb) build artifact
       if: contains(matrix.label, 'ubuntu')
       uses: actions/upload-artifact@v4
       with:
-        name: riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.deb
-        path: riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.deb
+        name: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb
+        path: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb
 
-    - name: Upload build artifact
+    - name: Upload (.tar.gz) build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
-        path: riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
+        name: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
+        path: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
 
-    - name: Upload to Release
+    - name: Upload (.deb) to release
       if: github.event_name == 'release'
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
-        riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
+        ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz --clobber
       env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload to Release
+    - name: Upload (.tar.gz) to release
       if: github.event_name == 'release' && contains(matrix.label, 'ubuntu')
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
-        riscv64-unknown-elf-toolchain-axelera-${{ matrix.arch }}-${{ matrix.label }}.deb
+        ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb --clobber
       env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  update-release-description:
+    name: Update release description with version info
+    runs-on: ubuntu-latest
+    needs: build   # This ensures the job runs after all matrix jobs
+    if: github.event_name == 'release'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update release description
+        run: |
+          gh release edit ${{ github.event.release.tag_name }} \
+            --notes-file versions.sh
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

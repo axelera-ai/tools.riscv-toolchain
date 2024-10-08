@@ -1,5 +1,6 @@
 binutils-gdb
 build
+install
 gcc
 newlib
 llvm-project
