@@ -172,7 +172,7 @@ jobs:
         name: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
         path: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
 
-    - name: Upload (.deb) to release
+    - name: Upload (.tar.gz) to release
       if: github.event_name == 'release'
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
@@ -180,7 +180,7 @@ jobs:
       env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload (.tar.gz) to release
+    - name: Upload (.deb) to release
       if: github.event_name == 'release' && contains(matrix.label, 'ubuntu')
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
