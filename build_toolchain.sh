@@ -98,6 +98,7 @@ CXXFLAGS="-O2 -Wno-error=implicit-function-declaration" \
     --with-expat                                        \
     --disable-werror                                    \
     --enable-gdb                                        \
+    --enable-tui                                        \
     --disable-gas                                       \
     --disable-binutils                                  \
     --disable-ld                                        \
@@ -183,7 +184,6 @@ cd ${BUILDPREFIX}/gcc-stage2
     --with-sysroot=${INSTALLPREFIX}/riscv64-unknown-elf \
     --with-native-system-header-dir=/include            \
     --with-newlib                                       \
-    --disable-shared                                    \
     --enable-languages=c,c++                            \
     --enable-tls                                        \
     --disable-werror                                    \

@@ -83,7 +83,8 @@ jobs:
         libslirp-dev \
         fakeroot \
         gh \
-        cmake
+        cmake \
+        libncurses-dev
 
     - name: Log in to GHCR
       if: matrix.container != false

@@ -4,5 +4,6 @@ install
 gcc
 newlib
 llvm-project
+mold
 *.tar.gz
 riscv64-unknown-elf-toolchain-axelera
