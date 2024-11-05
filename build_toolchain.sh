@@ -136,6 +136,8 @@ cd ${BUILDPREFIX}/gcc-stage1
     --with-multilib-generator="${MULTILIB_GENERATOR}"   \
     --with-arch=${DEFAULTARCH}                          \
     --with-abi=${DEFAULTABI}                            \
+    CFLAGS_FOR_TARGET="-O2 -mcmodel=medany"             \
+    CXXFLAGS_FOR_TARGET="-O2 -mcmodel=medany"           \
     ${EXTRA_OPTS}                                       \
     ${EXTRA_GCC_OPTS}
 make -j${NPROC}
@@ -194,6 +196,8 @@ cd ${BUILDPREFIX}/gcc-stage2
     --with-multilib-generator="${MULTILIB_GENERATOR}"   \
     --with-arch=${DEFAULTARCH}                          \
     --with-abi=${DEFAULTABI}                            \
+    CFLAGS_FOR_TARGET="-O2 -mcmodel=medany"             \
+    CXXFLAGS_FOR_TARGET="-O2 -mcmodel=medany"           \
     ${EXTRA_OPTS}                                       \
     ${EXTRA_GCC_OPTS}
 make -j${NPROC}
