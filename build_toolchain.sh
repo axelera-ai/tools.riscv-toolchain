@@ -98,6 +98,7 @@ CXXFLAGS="-O2 -Wno-error=implicit-function-declaration" \
     --with-expat                                        \
     --disable-werror                                    \
     --enable-gdb                                        \
+    --enable-tui                                        \
     --disable-gas                                       \
     --disable-binutils                                  \
     --disable-ld                                        \
@@ -136,6 +137,8 @@ cd ${BUILDPREFIX}/gcc-stage1
     --with-multilib-generator="${MULTILIB_GENERATOR}"   \
     --with-arch=${DEFAULTARCH}                          \
     --with-abi=${DEFAULTABI}                            \
+    CFLAGS_FOR_TARGET="-O2 -mcmodel=medany"             \
+    CXXFLAGS_FOR_TARGET="-O2 -mcmodel=medany"           \
     ${EXTRA_OPTS}                                       \
     ${EXTRA_GCC_OPTS}
 make -j${NPROC}
@@ -181,7 +184,6 @@ cd ${BUILDPREFIX}/gcc-stage2
     --with-sysroot=${INSTALLPREFIX}/riscv64-unknown-elf \
     --with-native-system-header-dir=/include            \
     --with-newlib                                       \
-    --disable-shared                                    \
     --enable-languages=c,c++                            \
     --enable-tls                                        \
     --disable-werror                                    \
@@ -194,6 +196,8 @@ cd ${BUILDPREFIX}/gcc-stage2
     --with-multilib-generator="${MULTILIB_GENERATOR}"   \
     --with-arch=${DEFAULTARCH}                          \
     --with-abi=${DEFAULTABI}                            \
+    CFLAGS_FOR_TARGET="-O2 -mcmodel=medany"             \
+    CXXFLAGS_FOR_TARGET="-O2 -mcmodel=medany"           \
     ${EXTRA_OPTS}                                       \
     ${EXTRA_GCC_OPTS}
 make -j${NPROC}
