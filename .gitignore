@@ -1,8 +1,12 @@
 binutils-gdb
 build
-install
+build-musl
+build-gnu
+install*
 gcc
 newlib
+glibc*
+musl-*
 llvm-project
 *.tar.gz
 riscv64-unknown-elf-toolchain-axelera
