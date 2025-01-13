@@ -6,7 +6,9 @@ on:
     types:
       - published
 env:
-  PKG_NAME: axelera-riscv64-unknown-elf-toolchain
+  PKG_VENDOR: axelera
+  PKG_NAME: riscv64-unknown-elf-toolchain
+  PKG_INSTALL_PREFIX: opt/axelera
 
 jobs:
   build:
@@ -124,67 +126,79 @@ jobs:
       if: matrix.container == false
       run: ./build_toolchain.sh
 
+    - name: Determine semantic version
+      run: |
+        cat install/VERSION
+        source install/VERSION
+        echo "PKG_FULL_NAME=${{ env.PKG_VENDOR }}-${{ env.PKG_NAME }}_${GIT_SEMVER_FROM_TAG}" >> "$GITHUB_ENV"
+        echo "GIT_SEMVER_FROM_TAG=$GIT_SEMVER_FROM_TAG" >> "$GITHUB_ENV"
+        echo "PKG_RELEASE_NUMBER=$PKG_RELEASE_NUMBER" >> "$GITHUB_ENV"
+        echo "PKG_DEPENDS=$PKG_DEPENDS" >> "$GITHUB_ENV"
+
     - name: Re-name and archive the build directory
       run: |
-        ARCHIVE_NAME="${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}"
-        mv install ${{ env.PKG_NAME }}
-        tar -czf "$ARCHIVE_NAME.tar.gz" ${{ env.PKG_NAME }}
+        ARCHIVE_NAME="${{ env.PKG_FULL_NAME }}_${{ matrix.label }}_${{ matrix.arch }}.tar.gz"
+        mv install ${{ env.PKG_FULL_NAME }}
+        tar -czf "$ARCHIVE_NAME" ${{ env.PKG_FULL_NAME }}
+        echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> "$GITHUB_ENV"
 
     # Create `deb` file
     - name: Create DEBIAN directory
       if: contains(matrix.label, 'ubuntu')
       run: |
-        mkdir -p ${{ env.PKG_NAME }}/DEBIAN
-        find ${{ env.PKG_NAME }} -type d | xargs chmod 755
+        mkdir -p debian/${{ env.PKG_INSTALL_PREFIX }}
+        mv ${{ env.PKG_FULL_NAME }} debian/${{ env.PKG_INSTALL_PREFIX }}
+        mkdir -p debian/DEBIAN
+        find debian -type d | xargs chmod 755
 
     - name: Create control file with version
       if: contains(matrix.label, 'ubuntu')
       run: |
-          cat ${{ env.PKG_NAME }}/VERSION
-          source ${{ env.PKG_NAME }}/VERSION
           DEB_PKG_ARCH="${{ matrix.arch }}"
 
           # Use sed to replace the placeholders with actual values
           sed -e "s|@PKG_VERSION@|${GIT_SEMVER_FROM_TAG}|" \
-              -e "s|@PKG_NAME@|${{ env.PKG_NAME }}|" \
+              -e "s|@PKG_NAME@|${{ env.PKG_VENDOR }}-${{ env.PKG_NAME }}|" \
               -e "s|@PKG_RELEASE_NUMBER@|${PKG_RELEASE_NUMBER}|" \
               -e "s|@DEB_PKG_ARCH@|${DEB_PKG_ARCH}|" \
               -e "s|@PKG_DEPENDS@|${PKG_DEPENDS}|" \
-              debian-pkg-control.in > ${{ env.PKG_NAME }}/DEBIAN/control
+              debian-pkg-control.in > debian/DEBIAN/control
 
     - name: Build .deb package
       if: contains(matrix.label, 'ubuntu')
       run: |
-        fakeroot dpkg-deb --build ${{ env.PKG_NAME }}
-        mv ${{ env.PKG_NAME }}.deb ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb
+        fakeroot dpkg-deb --build debian
+        DEB_NAME="${{ env.PKG_FULL_NAME }}_${{ matrix.label }}_${{ matrix.arch }}.deb"
+        mv debian.deb "$DEB_NAME"
+        echo "DEB_NAME=$DEB_NAME" >> "$GITHUB_ENV"
 
     # Upload the build artifacts
     - name: Upload (.deb) build artifact
       if: contains(matrix.label, 'ubuntu')
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb
-        path: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb
+        name: ${{ env.DEB_NAME }}
+        path: ${{ env.DEB_NAME }}
 
     - name: Upload (.tar.gz) build artifact
       uses: actions/upload-artifact@v4
       with:
-        name: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
-        path: ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz
+        name: ${{ env.ARCHIVE_NAME }}
+        path: ${{ env.ARCHIVE_NAME }}
 
-    - name: Upload (.deb) to release
+    - name: Upload (.tar.gz) to release
       if: github.event_name == 'release'
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
-        ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.tar.gz --clobber
+        ${{ env.ARCHIVE_NAME }} --clobber
       env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Upload (.tar.gz) to release
+    - name: Upload (.deb) to release
       if: github.event_name == 'release' && contains(matrix.label, 'ubuntu')
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
-        ${{ env.PKG_NAME }}-${{ matrix.arch }}-${{ matrix.label }}.deb --clobber
+        ${{ env.DEB_NAME }} --clobber
       env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
