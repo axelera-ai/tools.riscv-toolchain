@@ -17,7 +17,7 @@ source util/common.sh
 # Build stage1 toolchain
 ########################
 
-source ./build_linux_stage1.sh
+source ./build_toolchain_linux_stage1.sh
 
 ###########################
 # Build musl linux headers
