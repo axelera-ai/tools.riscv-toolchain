@@ -1,8 +1,12 @@
 binutils-gdb
 build
-install
+build-musl
+build-gnu
+install*
 gcc
 newlib
+glibc*
+musl-*
 llvm-project
 mold
 *.tar.gz
