@@ -5,5 +5,7 @@ GDB_BRANCH="gdb-15-branch"
 GCC_BRANCH="releases/gcc-14"
 NEWLIB_BRANCH="newlib-4.4.0"
 LLVM_BRANCH="axelera-ai-18.1.8"
+SPIRV_LLVM_TRANSLATOR_TAG="v18.1.8"
+SPIRV_TOOLS_TAG="v2024.3"
 PKG_DEPENDS="libc6, libstdc++6, libgcc-s1, libgmp10, libmpfr6, libexpat1, libtinfo6, libncursesw6, zlib1g, libmpc3"
 PKG_RELEASE_NUMBER=1

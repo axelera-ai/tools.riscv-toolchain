@@ -7,3 +7,5 @@ llvm-project
 mold
 *.tar.gz
 riscv64-unknown-elf-toolchain-axelera
+SPIRV-Tools
+SPIRV-LLVM-Translator

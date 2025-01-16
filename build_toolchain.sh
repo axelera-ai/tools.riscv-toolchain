@@ -204,6 +204,7 @@ make -j${NPROC}
 make install
 cd ../..
 
+# LLVM
 clone_if_not_exists ${LLVM_BRANCH} git@github.com:axelera-ai/tools.llvm-project.git llvm-project
 
 cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm      \
@@ -219,9 +220,38 @@ cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm      \
     -DLLDB_INCLUDE_TESTS=OFF                           \
     -DLLVM_ENABLE_PROJECTS="clang;lld;lldb"            \
 
-# Build and install
+## Build and install
 echo "[+] Building and installing LLVM"
 cmake --build ${BUILDPREFIX}/llvm -j${NPROC} --target install
+
+# CentOS is too outdated to build the required versions of these projects.
+# Hence, we omit these two projects from the CentOS distribution.
+# I think this is acceptable because to my knowledge these two projects are
+# only used by the production software.
+if [ ! -e /etc/redhat-release ]; then
+    # SPIRV-Tools
+    clone_if_not_exists ${SPIRV_TOOLS_TAG} https://github.com/KhronosGroup/SPIRV-Tools.git SPIRV-Tools
+    cd SPIRV-Tools && python3 utils/git-sync-deps && cd ..
+
+    cmake -S SPIRV-Tools -B ${BUILDPREFIX}/spirv-tools \
+        -DCMAKE_BUILD_TYPE="Release"                   \
+        -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}
+
+    echo "[+] Building and installing SPIRV-Tools"
+    cmake --build ${BUILDPREFIX}/spirv-tools -j${NPROC} --target install
+
+    # SPIRV-LLVM-Translator
+    clone_if_not_exists ${SPIRV_LLVM_TRANSLATOR_TAG} https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git SPIRV-LLVM-Translator
+
+    cmake -S SPIRV-LLVM-Translator -B ${BUILDPREFIX}/spirv-llvm-translator \
+        -DCMAKE_BUILD_TYPE="Release"                                       \
+        -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}                            \
+        -DLLVM_DIR=${BUILDPREFIX}/llvm/lib/cmake/llvm                      \
+        -DLLVM_SPIRV_BUILD_EXTERNAL=Yes
+
+    echo "[+] Building and installing SPIRV-LLVM-Translator"
+    cmake --build ${BUILDPREFIX}/spirv-llvm-translator -j${NPROC} --target install
+fi
 
 # Save variables to a file
 echo "[+] Saving variables to toolchain directory"
