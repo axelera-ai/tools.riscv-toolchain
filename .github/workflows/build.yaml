@@ -5,6 +5,7 @@ on:
   release:              # Trigger on release
     types:
       - published
+  pull_request: # FIXME Remove before merge
 env:
   PKG_VENDOR: axelera
   PKG_NAME: riscv64-unknown-elf-toolchain
