@@ -25,7 +25,7 @@ jobs:
             label: ubuntu-20.04
             arch: amd64
           - os: ci-prod-AWS-CPU-X86_64-EKS
-            container: ghcr.io/axelera-ai/centos7-toolchain:v0.2
+            container: ghcr.io/axelera-ai/centos7-toolchain:v0.3
             label: centos7
             arch: amd64
           - os: [macOS, self-hosted]

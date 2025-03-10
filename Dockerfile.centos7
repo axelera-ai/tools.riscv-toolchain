@@ -9,15 +9,18 @@ RUN sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* && \
     sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
 
 RUN yum -y update && \
+
     yum -y groupinstall "Development Tools" && \
-    yum -y install gmp-devel mpfr-devel libmpc-devel zlib-devel texinfo wget bzip2 zip && \
+    yum -y install gmp-devel mpfr-devel libmpc-devel zlib-devel texinfo wget bzip2 bzip2-devel zip \
+        readline-devel sqlite sqlite-devel openssl-devel xz xz-devel \
+    libffi-devel && \
     yum clean all
 
 WORKDIR /tmp
-RUN wget https://ftp.gnu.org/gnu/gcc/gcc-7.4.0/gcc-7.4.0.tar.gz && \
-    tar -xzf gcc-7.4.0.tar.gz
+RUN wget https://ftp.gnu.org/gnu/gcc/gcc-10.5.0/gcc-10.5.0.tar.gz && \
+    tar -xzf gcc-10.5.0.tar.gz
 
-WORKDIR /tmp/gcc-7.4.0
+WORKDIR /tmp/gcc-10.5.0
 
 RUN ./contrib/download_prerequisites && \
     mkdir build && \
@@ -26,6 +29,15 @@ RUN ./contrib/download_prerequisites && \
     make -j$(nproc)
 
 RUN cd build && make install
+
+WORKDIR /tmp
+RUN wget https://www.python.org/ftp/python/3.11.11/Python-3.11.11.tar.xz && \
+    tar xvf Python-3.11.11.tar.xz
+
+WORKDIR /tmp/Python-3.11.11
+RUN ./configure --enable-optimizations && \
+    make -j$(nproc) && \
+    make install
 
 WORKDIR /tmp
 RUN wget https://github.com/Kitware/CMake/releases/download/v3.30.0/cmake-3.30.0-linux-x86_64.sh && \
@@ -61,4 +73,3 @@ RUN groupadd -g ${GROUP_ID} ${USER_NAME} && \
 
 # Set the user as the default user
 USER ${USER_NAME}
-
