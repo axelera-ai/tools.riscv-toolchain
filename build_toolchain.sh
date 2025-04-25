@@ -211,7 +211,6 @@ cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm      \
     -DCMAKE_BUILD_TYPE="Release"                       \
     -DLLVM_USE_SPLIT_DWARF=True                        \
     -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}            \
-    -DLLVM_OPTIMIZED_TABLEGEN=True                     \
     -DLLVM_BUILD_TESTS=False                           \
     -DLLVM_DEFAULT_TARGET_TRIPLE="riscv64-unknown-elf" \
     -DLLVM_TARGETS_TO_BUILD="RISCV"                    \
