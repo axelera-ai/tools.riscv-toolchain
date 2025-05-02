@@ -216,7 +216,7 @@ cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm      \
     -DLLVM_TARGETS_TO_BUILD="RISCV"                    \
     -DLLDB_USE_SYSTEM_DEBUGSERVER=ON                   \
     -DLLDB_INCLUDE_TESTS=OFF                           \
-    -DLLVM_ENABLE_PROJECTS="clang;lld;lldb"            \
+    -DLLVM_ENABLE_PROJECTS="clang;lld;lldb"
 
 ## Build and install
 echo "[+] Building and installing LLVM"
