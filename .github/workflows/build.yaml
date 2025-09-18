@@ -82,7 +82,7 @@ jobs:
         ssh-keyscan -H github.com >> ~/.ssh/known_hosts
       shell: bash
 
-    - uses: webfactory/ssh-agent@v0.9.0
+    - uses: webfactory/ssh-agent@v0.9.1
       with:
           ssh-private-key: ${{ secrets.TOOLS_LLVM_DEPLOY_KEY }}
 
