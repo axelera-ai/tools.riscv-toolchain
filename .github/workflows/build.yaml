@@ -15,29 +15,25 @@ jobs:
     strategy:
       matrix:
         os:  [ci-prod-AWS-CPU-X86_64-EKS, ci-prod-AWS-CPU-ARM64-EKS]
-        label: [ubuntu-20.04, centos7]
-        exclude:
-          - os: ci-prod-AWS-CPU-ARM64-EKS
-          - label: centos7
+        label: [ubuntu-20.04]
         include:
           - os: ci-prod-AWS-CPU-X86_64-EKS
             container: false
             label: ubuntu-20.04
             arch: amd64
-          - os: ci-prod-AWS-CPU-X86_64-EKS
-            container: ghcr.io/axelera-ai/centos7-toolchain:v0.3
-            label: centos7
-            arch: amd64
-          - os: [macOS, self-hosted]
-            container: false
-            label: macos
-            arch: arm64
+          # - os: [macOS, self-hosted]
+          #   container: false
+          #   label: macos
+          #   arch: arm64
           - os: ci-prod-AWS-CPU-ARM64-EKS
             container: false
             label: ubuntu-20.04
             arch: arm64
 
     runs-on: ${{ matrix.os }}
+
+    container:
+      image: ubuntu:20.04
 
     name: Build and package (${{ matrix.label }}, ${{ matrix.arch }})
     steps:
@@ -88,18 +84,6 @@ jobs:
         cmake \
         libncurses-dev
 
-    - name: Log in to GHCR
-      if: matrix.container != false
-      uses: docker/login-action@v3.3.0
-      with:
-        registry: ghcr.io
-        username: ${{ github.actor }}
-        password: ${{ secrets.GHCR_PAT }}
-
-    - name: Pull container image
-      if: matrix.container != false
-      run: docker pull ${{ matrix.container }}
-
     - name: Execute keyscan for repo servers
       run: |
         [[ -e ~/.ssh/known_hosts ]] && ssh-keygen -R github.com || true
@@ -111,19 +95,8 @@ jobs:
       with:
           ssh-private-key: ${{ secrets.TOOLS_LLVM_DEPLOY_KEY }}
 
-    - name: Build Toolchain (container)
-      if:  matrix.container != false
-      run: |
-          source ./versions.sh
-          git clone --depth 1 --single-branch --branch $LLVM_BRANCH git@github.com:axelera-ai/tools.llvm-project.git llvm-project
-          docker run --rm -v ${{ github.workspace }}:/workspace \
-            -v /etc/passwd:/etc/passwd:ro \
-            -v /etc/group:/etc/group:ro  \
-            -w /workspace -u $(id -u):$(id -g) \
-            ${{ matrix.container }} bash -c "./build_toolchain.sh"
-
     - name: Build Toolchain (native)
-      if: matrix.container == false
+      # if: matrix.container == false
       run: ./build_toolchain.sh
 
     - name: Determine semantic version
