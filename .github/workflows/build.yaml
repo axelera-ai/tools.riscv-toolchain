@@ -75,18 +75,12 @@ jobs:
           zlib1g-dev libexpat-dev ninja-build git libglib2.0-dev libslirp-dev fakeroot gh \
           cmake libncurses-dev
 
-    - name: Trust GitHub host keys (all types)
+    - name: Execute keyscan for repo servers
       run: |
+        [[ -e /etc/ssh/ssh_known_hosts ]] && ssh-keygen -R github.com || true
         mkdir -p ~/.ssh
-        chmod 700 ~/.ssh
-        # Remove any stale entries
-        [[ -e ~/.ssh/known_hosts ]] && ssh-keygen -R github.com || true
-        # Fetch ed25519, ecdsa, and rsa host keys
-        ssh-keyscan -t ed25519,ecdsa,rsa github.com >> ~/.ssh/known_hosts
-        chmod 644 ~/.ssh/known_hosts
-        # Sanity check: should show at least 1–3 lines, not just comments
-        grep -E 'github\.com|^\|' ~/.ssh/known_hosts || (echo "No keys captured!" && exit 1)
-
+        ssh-keyscan -H github.com >> /etc/ssh/ssh_known_hosts
+      shell: bash
 
     - uses: webfactory/ssh-agent@v0.9.1
       with:
