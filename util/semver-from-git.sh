@@ -33,8 +33,6 @@
 # (C) Timothy Jones, 2019, released under BSD License 2.0 (3-clause BSD license)
 # https://github.com/TimothyJones
 
-export GIT_DISCOVERY_ACROSS_FILESYSTEM=1
-
 if [ -z "${1:-}" ]; then
    COMMIT="HEAD"
 

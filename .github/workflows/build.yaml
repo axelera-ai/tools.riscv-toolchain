@@ -34,11 +34,6 @@ jobs:
     name: Build and package (${{ matrix.label }}, ${{ matrix.arch }}, ${{ matrix.toolchain }})
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
-
     - name: Install dependencies
       if: ${{ !contains(matrix.os, 'macOS') }}
       run: |
@@ -70,6 +65,11 @@ jobs:
           libmpc-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc \
           zlib1g-dev libexpat-dev ninja-build git libglib2.0-dev libslirp-dev fakeroot gh \
           cmake libncurses-dev
+
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
 
     - name: Execute keyscan for repo servers
       run: |
