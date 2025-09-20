@@ -88,7 +88,9 @@ jobs:
         echo "PKG_NAME=riscv64-unknown-elf-toolchain-${{ matrix.toolchain }}" >> "$GITHUB_ENV"
 
     - name: Build Toolchain
-      run: ./build_${{ matrix.toolchain }}.sh
+      run: |
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        ./build_${{ matrix.toolchain }}.sh
 
     - name: Determine semantic version
       run: |
