@@ -10,6 +10,10 @@ env:
   PKG_INSTALL_PREFIX: opt/axelera
 
 jobs:
+  defaults:
+    run:
+      shell: bash
+
   build:
     strategy:
       matrix:
@@ -76,7 +80,6 @@ jobs:
         [[ -e /etc/ssh/ssh_known_hosts ]] && ssh-keygen -R github.com || true
         mkdir -p ~/.ssh
         ssh-keyscan -H github.com >> /etc/ssh/ssh_known_hosts
-      shell: bash
 
     - uses: webfactory/ssh-agent@v0.9.1
       with:
