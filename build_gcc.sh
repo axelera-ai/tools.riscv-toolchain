@@ -8,17 +8,11 @@ MULTILIB_GENERATOR="rv64i-lp64--c rv64ia-lp64--m rv64im-lp64--c rv64if-lp64f-rv6
 source ./versions.sh
 source ./util/util.sh
 
-# Save variables to a file
-echo "[+] Saving variables to toolchain directory"
-mkdir -p ${INSTALLPREFIX}
-cp versions.sh ${INSTALLPREFIX}/VERSION-llvm
-
 download_prerequisites_binutils() {
   # Download libgmp and libmpfr
   download_and_extract "gmp" "${LIBGMP_VERS}" "https://ftp.gnu.org/gnu/gmp/gmp"
   download_and_extract "mpfr" "${LIBMPFR_VERS}" "https://ftp.gnu.org/gnu/mpfr/mpfr"
 }
-
 
 # Build binutils
 clone_if_not_exists ${BINUTILS_BRANCH} https://gnu.googlesource.com/binutils-gdb

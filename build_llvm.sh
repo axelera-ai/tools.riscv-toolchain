@@ -7,13 +7,6 @@ SRCPREFIX=${PWD}
 source ./versions.sh
 source ./util/util.sh
 
-# Save variables to a file
-echo "[+] Saving variables to toolchain directory"
-mkdir -p ${INSTALLPREFIX}
-cp versions.sh ${INSTALLPREFIX}/VERSION-llvm
-
-source util/semver-from-git.sh >> ${INSTALLPREFIX}/VERSION-llvm
-
 clone_if_not_exists ${LLVM_BRANCH} git@github.com:axelera-ai/tools.llvm-project.git llvm-project
 cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm           \
     -DCMAKE_BUILD_TYPE="Release"                            \
@@ -42,10 +35,8 @@ clone_if_not_exists ${NEWLIB_BRANCH} https://cygwin.com/git/newlib-cygwin.git ne
 PATH=${INSTALLPREFIX}/bin:${PATH}
 mkdir -p ${BUILDPREFIX}/newlib
 cd ${BUILDPREFIX}/newlib
-# The `-Wno-error=implicit-function-declaration` flag is needed to build newlib
-# with GCC 14. Otherwise the build fails as the long double support doesn't seem
-# to be fully implemented for RISC-V and GCC 14 treats implicit functions as
-# errors.
+
+
 CFLAGS_FOR_TARGET="-O2 -mcmodel=medany -Wno-error=implicit-function-declaration" \
 CXXFLAGS_FOR_TARGET="-O2 -mcmodel=medany"                                        \
 ../../newlib/configure                                                           \
