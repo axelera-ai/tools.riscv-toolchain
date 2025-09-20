@@ -10,10 +10,6 @@ env:
   PKG_INSTALL_PREFIX: opt/axelera
 
 jobs:
-  defaults:
-    run:
-      shell: bash
-
   build:
     strategy:
       matrix:
@@ -80,6 +76,7 @@ jobs:
         [[ -e /etc/ssh/ssh_known_hosts ]] && ssh-keygen -R github.com || true
         mkdir -p ~/.ssh
         ssh-keyscan -H github.com >> /etc/ssh/ssh_known_hosts
+      shell: bash
 
     - uses: webfactory/ssh-agent@v0.9.1
       with:
@@ -98,7 +95,7 @@ jobs:
     - name: Determine semantic version
       run: |
         cat install/VERSION-${{ matrix.toolchain }}
-        source install/VERSION-${{ matrix.toolchain }}
+        . install/VERSION-${{ matrix.toolchain }}
         echo "PKG_FULL_NAME=${{ env.PKG_VENDOR }}-${PKG_NAME}_${GIT_SEMVER_FROM_TAG}" >> "$GITHUB_ENV"
         echo "GIT_SEMVER_FROM_TAG=$GIT_SEMVER_FROM_TAG" >> "$GITHUB_ENV"
         echo "PKG_RELEASE_NUMBER=$PKG_RELEASE_NUMBER" >> "$GITHUB_ENV"
