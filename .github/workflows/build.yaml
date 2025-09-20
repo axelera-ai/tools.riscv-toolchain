@@ -94,8 +94,8 @@ jobs:
 
     - name: Determine semantic version
       run: |
-        cat install/VERSION
-        source install/VERSION
+        cat install/VERSION-${{ matrix.toolchain }}
+        source install/VERSION-${{ matrix.toolchain }}
         echo "PKG_FULL_NAME=${{ env.PKG_VENDOR }}-${PKG_NAME}_${GIT_SEMVER_FROM_TAG}" >> "$GITHUB_ENV"
         echo "GIT_SEMVER_FROM_TAG=$GIT_SEMVER_FROM_TAG" >> "$GITHUB_ENV"
         echo "PKG_RELEASE_NUMBER=$PKG_RELEASE_NUMBER" >> "$GITHUB_ENV"
