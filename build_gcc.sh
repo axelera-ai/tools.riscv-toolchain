@@ -8,6 +8,10 @@ MULTILIB_GENERATOR="rv64i-lp64--c rv64ia-lp64--m rv64im-lp64--c rv64if-lp64f-rv6
 source ./versions.sh
 source ./util/util.sh
 
+# Save variables to a file
+echo "[+] Saving variables to toolchain directory"
+cp versions.sh ${INSTALLPREFIX}/VERSION-llvm
+
 download_prerequisites_binutils() {
   # Download libgmp and libmpfr
   download_and_extract "gmp" "${LIBGMP_VERS}" "https://ftp.gnu.org/gnu/gmp/gmp"

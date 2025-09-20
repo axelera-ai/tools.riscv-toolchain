@@ -7,6 +7,12 @@ SRCPREFIX=${PWD}
 source ./versions.sh
 source ./util/util.sh
 
+# Save variables to a file
+echo "[+] Saving variables to toolchain directory"
+cp versions.sh ${INSTALLPREFIX}/VERSION-llvm
+
+source util/semver-from-git.sh >> ${INSTALLPREFIX}/VERSION-llvm
+
 clone_if_not_exists ${LLVM_BRANCH} git@github.com:axelera-ai/tools.llvm-project.git llvm-project
 cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm           \
     -DCMAKE_BUILD_TYPE="Release"                            \

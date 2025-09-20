@@ -108,7 +108,6 @@ jobs:
 
     # Create `deb` file
     - name: Create DEBIAN directory
-      if: contains(matrix.label, 'ubuntu')
       run: |
         mkdir -p debian/${{ env.PKG_INSTALL_PREFIX }}
         mv ${{ env.PKG_FULL_NAME }} debian/${{ env.PKG_INSTALL_PREFIX }}
@@ -116,7 +115,6 @@ jobs:
         find debian -type d | xargs chmod 755
 
     - name: Create control file with version
-      if: contains(matrix.label, 'ubuntu')
       run: |
           DEB_PKG_ARCH="${{ matrix.arch }}"
 
@@ -129,7 +127,6 @@ jobs:
               debian-pkg-control.in > debian/DEBIAN/control
 
     - name: Build .deb package
-      if: contains(matrix.label, 'ubuntu')
       run: |
         fakeroot dpkg-deb --build debian
         DEB_NAME="${{ env.PKG_FULL_NAME }}_${{ matrix.label }}_${{ matrix.arch }}.deb"
@@ -138,7 +135,6 @@ jobs:
 
     # Upload artifacts
     - name: Upload (.deb) build artifact
-      if: contains(matrix.label, 'ubuntu')
       uses: actions/upload-artifact@v4
       with:
         name: ${{ env.DEB_NAME }}
