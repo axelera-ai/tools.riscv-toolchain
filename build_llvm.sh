@@ -9,6 +9,7 @@ source ./util/util.sh
 
 # Save variables to a file
 echo "[+] Saving variables to toolchain directory"
+mkdir -p ${INSTALLPREFIX}
 cp versions.sh ${INSTALLPREFIX}/VERSION-llvm
 
 source util/semver-from-git.sh >> ${INSTALLPREFIX}/VERSION-llvm

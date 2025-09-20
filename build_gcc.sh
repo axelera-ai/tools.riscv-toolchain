@@ -10,6 +10,7 @@ source ./util/util.sh
 
 # Save variables to a file
 echo "[+] Saving variables to toolchain directory"
+mkdir -p ${INSTALLPREFIX}
 cp versions.sh ${INSTALLPREFIX}/VERSION-llvm
 
 download_prerequisites_binutils() {
