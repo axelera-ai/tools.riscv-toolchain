@@ -126,7 +126,7 @@ jobs:
               -e "s|@PKG_RELEASE_NUMBER@|${PKG_RELEASE_NUMBER}|" \
               -e "s|@DEB_PKG_ARCH@|${DEB_PKG_ARCH}|" \
               -e "s|@PKG_DEPENDS@|${PKG_DEPENDS}|" \
-              debian-pkg-control.in > debian/DEBIAN/control
+              debian-pkg-control.${{ matrix.toolchain }} > debian/DEBIAN/control
 
     - name: Build .deb package
       run: |

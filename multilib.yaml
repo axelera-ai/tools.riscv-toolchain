@@ -51,13 +51,13 @@ Variants:
 Mappings:
 - Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_c2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
   Flags: [-march=rv64imac, "-mabi=lp64"]
-- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9]_c2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*_zicsr2p0(_z[a-z0-9]*[0-9]+p[0-9]+)*
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9]_c2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
   Flags: [-march=rv64imafc, "-mabi=lp64f"]
-- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9]_d2p[0-9]_c2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*_zicsr2p0(_z[a-z0-9]*[0-9]+p[0-9]+)*
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9]_d2p[0-9]_c2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
   Flags: [-march=rv64imafdc, "-mabi=lp64d"]
 - Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
   Flags: [-march=rv64ima, "-mabi=lp64"]
-- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*_zicsr2p0(_z[a-z0-9]*[0-9]+p[0-9]+)*
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
   Flags: [-march=rv64imaf, "-mabi=lp64f"]
-- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9]_d2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*_zicsr2p0(_z[a-z0-9]*[0-9]+p[0-9]+)*
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9]_d2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
   Flags: [-march=rv64imafd, "-mabi=lp64d"]
