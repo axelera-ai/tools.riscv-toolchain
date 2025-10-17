@@ -1,0 +1,63 @@
+---
+# This file is in two parts:
+# 1. A list of library variants.
+# 2. A mapping from flags generated from command line arguments to further
+#    flags.
+
+# How does clang use this file?
+# 1. If the ToolChain class for the architecture supports this form of
+#    multilib it then it loads the file if present in sysroot.
+# 2. Generate flags from the user provided arguments.
+#    (Use `clang -print-multi-flags-experimental` to see which flags are
+#    generated).
+# 3. Compare the arguments against each regular expression and store
+#    associated flags if there's a match.
+# 4. Find the last library variant whose flags are a subset of the
+#    flags derived from the user provided arguments.
+# 5. Use the directory for the library variant as the sysroot.
+
+# Clang will emit an error if this number is greater than its current multilib
+# version or if its major version differs, but will accept lesser minor
+# versions.
+MultilibVersion: 1.0
+
+# The first section of the file is the list of library variants.
+# A library is considered compatible if the are a subset of the flags derived
+# from the arguments provided by the user.
+# If multiple libraries are deemed compatible then the one that appears
+# last in the list wins. A ToolChain may instead opt to use more than one
+# multilib, layered on top of each other.
+Variants:
+  - Dir: riscv64-unknown-elf/rv64ima/lp64
+    Flags: [ "-march=rv64ima", "-mabi=lp64"]
+  - Dir: riscv64-unknown-elf/rv64imafdc/lp64f
+    Flags: [ "-march=rv64imaf", "-mabi=lp64f" ]
+  - Dir: riscv64-unknown-elf/rv64imafdc/lp64d
+    Flags: [ "-march=rv64imafd", "-mabi=lp64d" ]
+    # Without `C` extension
+  - Dir: riscv64-unknown-elf/rv64imac/lp64
+    Flags: [ "-march=rv64imac", "-mabi=lp64"]
+  - Dir: riscv64-unknown-elf/rv64imafdc/lp64f
+    Flags: [ "-march=rv64imafc", "-mabi=lp64f" ]
+  - Dir: riscv64-unknown-elf/rv64imafdc/lp64d
+    Flags: [ "-march=rv64imafdc", "-mabi=lp64d" ]
+
+
+# The second section of the file is a map from auto-detected flags
+# to custom flags. The auto-detected flags can be printed out
+# by running clang with `-print-multi-flags-experimental`.
+# The regex must match a whole flag string.
+# All flags in the "Flags" list will be added if an argument matches.
+Mappings:
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_c2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
+  Flags: [-march=rv64imac, "-mabi=lp64"]
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9]_c2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
+  Flags: [-march=rv64imafc, "-mabi=lp64f"]
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9]_d2p[0-9]_c2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
+  Flags: [-march=rv64imafdc, "-mabi=lp64d"]
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
+  Flags: [-march=rv64ima, "-mabi=lp64"]
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
+  Flags: [-march=rv64imaf, "-mabi=lp64f"]
+- Match: -march=rv64i2p[0-9]_m2p[0-9]_a2p[0-9]_f2p[0-9]_d2p[0-9](_[bjklptuvw][0-9]+p[0-9]+)*(_z[a-z0-9]*[0-9]+p[0-9]+)*
+  Flags: [-march=rv64imafd, "-mabi=lp64d"]

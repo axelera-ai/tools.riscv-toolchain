@@ -3,59 +3,16 @@
 INSTALLPREFIX="${PWD}/install"
 BUILDPREFIX=${PWD}/build
 SRCPREFIX=${PWD}
-DEFAULTARCH=rv64imafdc
-DEFAULTABI=lp64d
 MULTILIB_GENERATOR="rv64i-lp64--c rv64ia-lp64--m rv64im-lp64--c rv64if-lp64f-rv64ifd-c rv64iaf-lp64f-rv64imaf,rv64iafc-d rv64imf-lp64f-rv64imfd-c rv64iac-lp64-- rv64imac-lp64-- rv64imafc-lp64f-rv64imafdc- rv64ifd-lp64d--m,c rv64iafd-lp64d-rv64imafd,rv64iafdc- rv64imafdc-lp64d--"
 
 source ./versions.sh
-
-if [[ "$(uname)" == "Darwin" ]]; then
-    NPROC=$(sysctl -n hw.logicalcpu)
-else
-    NPROC=$(nproc)
-fi
-
-# Print the GCC and G++ used in this build
-clone_if_not_exists() {
-  local BRANCH_OR_TAG=$1
-  local REPO_URL=$2
-  local TARGET_DIR=${3:-$(basename "$REPO_URL" .git)}
-
-  # Check if the target directory exists
-  if [ -d "$TARGET_DIR" ]; then
-    echo "[+] Directory $TARGET_DIR already exists locally, skipping fetch..."
-  else
-    echo "[+] Fetching $TARGET_DIR from $REPO_URL..."
-    git clone --depth 1 --single-branch --branch "$BRANCH_OR_TAG" "$REPO_URL" "$TARGET_DIR"
-    rm -rf "$TARGET_DIR/.git"
-  fi
-}
-
-# Download and extract a library using either wget or curl.
-download_and_extract() {
-  local lib_name=$1
-  local lib_version=$2
-  local url=$3
-
-  if which wget >/dev/null; then
-    dl='wget'
-  else
-    dl='curl -LO'
-  fi
-
-  if [ ! -e "${lib_name}" ]; then
-    ${dl} "${url}-${lib_version}.tar.bz2"
-    tar -xjf "${lib_name}-${lib_version}.tar.bz2"
-    mv "${lib_name}-${lib_version}" "${lib_name}"
-  fi
-}
+source ./util/util.sh
 
 download_prerequisites_binutils() {
   # Download libgmp and libmpfr
   download_and_extract "gmp" "${LIBGMP_VERS}" "https://ftp.gnu.org/gnu/gmp/gmp"
   download_and_extract "mpfr" "${LIBMPFR_VERS}" "https://ftp.gnu.org/gnu/mpfr/mpfr"
 }
-
 
 # Build binutils
 clone_if_not_exists ${BINUTILS_BRANCH} https://gnu.googlesource.com/binutils-gdb
@@ -204,55 +161,8 @@ make -j${NPROC}
 make install
 cd ../..
 
-# LLVM
-clone_if_not_exists ${LLVM_BRANCH} git@github.com:axelera-ai/tools.llvm-project.git llvm-project
-
-cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm      \
-    -DCMAKE_BUILD_TYPE="Release"                       \
-    -DLLVM_USE_SPLIT_DWARF=True                        \
-    -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}            \
-    -DLLVM_BUILD_TESTS=False                           \
-    -DLLVM_DEFAULT_TARGET_TRIPLE="riscv64-unknown-elf" \
-    -DLLVM_TARGETS_TO_BUILD="RISCV"                    \
-    -DLLDB_USE_SYSTEM_DEBUGSERVER=ON                   \
-    -DLLDB_INCLUDE_TESTS=OFF                           \
-    -DLLVM_ENABLE_PROJECTS="clang;lld;lldb"
-
-## Build and install
-echo "[+] Building and installing LLVM"
-cmake --build ${BUILDPREFIX}/llvm -j${NPROC} --target install
-
-# CentOS is too outdated to build the required versions of these projects.
-# Hence, we omit these two projects from the CentOS distribution.
-# I think this is acceptable because to my knowledge these two projects are
-# only used by the production software.
-if [ ! -e /etc/redhat-release ]; then
-    # SPIRV-Tools
-    clone_if_not_exists ${SPIRV_TOOLS_TAG} https://github.com/KhronosGroup/SPIRV-Tools.git SPIRV-Tools
-    cd SPIRV-Tools && python3 utils/git-sync-deps && cd ..
-
-    cmake -S SPIRV-Tools -B ${BUILDPREFIX}/spirv-tools \
-        -DCMAKE_BUILD_TYPE="Release"                   \
-        -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}
-
-    echo "[+] Building and installing SPIRV-Tools"
-    cmake --build ${BUILDPREFIX}/spirv-tools -j${NPROC} --target install
-
-    # SPIRV-LLVM-Translator
-    clone_if_not_exists ${SPIRV_LLVM_TRANSLATOR_TAG} https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git SPIRV-LLVM-Translator
-
-    cmake -S SPIRV-LLVM-Translator -B ${BUILDPREFIX}/spirv-llvm-translator \
-        -DCMAKE_BUILD_TYPE="Release"                                       \
-        -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}                            \
-        -DLLVM_DIR=${BUILDPREFIX}/llvm/lib/cmake/llvm                      \
-        -DLLVM_SPIRV_BUILD_EXTERNAL=Yes
-
-    echo "[+] Building and installing SPIRV-LLVM-Translator"
-    cmake --build ${BUILDPREFIX}/spirv-llvm-translator -j${NPROC} --target install
-fi
-
 # Save variables to a file
 echo "[+] Saving variables to toolchain directory"
-cp versions.sh ${INSTALLPREFIX}/VERSION
+cp versions.sh ${INSTALLPREFIX}/VERSION-gcc
 
-source util/semver-from-git.sh >> ${INSTALLPREFIX}/VERSION
+source util/semver-from-git.sh >> ${INSTALLPREFIX}/VERSION-gcc
