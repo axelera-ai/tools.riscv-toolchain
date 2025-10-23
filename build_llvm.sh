@@ -1,7 +1,7 @@
 #!/bin/bash -xe
 
 INSTALLPREFIX="${PWD}/install"
-BUILDPREFIX=${PWD}/build-tmp
+BUILDPREFIX=${PWD}/build
 SRCPREFIX=${PWD}
 
 source ./versions.sh
