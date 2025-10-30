@@ -19,7 +19,7 @@ cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm           \
     -DLLDB_INCLUDE_TESTS=OFF                                \
     -DCLANG_DEFAULT_LINKER=lld                              \
     -DCLANG_LINKS_TO_CREATE="riscv64-clang;riscv64-clang++" \
-    -DLLVM_ENABLE_PROJECTS="clang;lld;lldb"
+    -DLLVM_ENABLE_PROJECTS="clang;lld;lldb;clang-tools-extra"
 
 ## Build and install
 echo "[+] Building and installing LLVM"
