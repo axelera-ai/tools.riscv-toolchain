@@ -13,15 +13,15 @@ jobs:
   build:
     strategy:
       matrix:
-        os:  [ci-prod-AWS-CPU-X86_64-EKS, ci-prod-AWS-CPU-ARM64-EKS]
+        os:  [production-AWS-CPU-X86_64-EKS, production-AWS-CPU-ARM64-EKS]
         label: [ubuntu-20.04]
         toolchain: [gcc, llvm]
         include:
-          - os: ci-prod-AWS-CPU-X86_64-EKS
+          - os: production-AWS-CPU-X86_64-EKS
             container: false
             label: ubuntu-20.04
             arch: amd64
-          - os: ci-prod-AWS-CPU-ARM64-EKS
+          - os: production-AWS-CPU-ARM64-EKS
             container: false
             label: ubuntu-20.04
             arch: arm64
