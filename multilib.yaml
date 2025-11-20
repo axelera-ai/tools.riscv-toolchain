@@ -1,4 +1,5 @@
 ---
+# SPDX-License-Identifier: Apache-2.0
 # This file is in two parts:
 # 1. A list of library variants.
 # 2. A mapping from flags generated from command line arguments to further

@@ -1,4 +1,5 @@
 #!/bin/bash -xe
+# SPDX-License-Identifier: Apache-2.0
 
 INSTALLPREFIX="${PWD}/install"
 BUILDPREFIX=${PWD}/build

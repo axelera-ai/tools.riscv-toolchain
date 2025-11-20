@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 LIBGMP_VERS=6.3.0
 LIBMPFR_VERS=4.2.2
 BINUTILS_BRANCH="binutils-2_44"
