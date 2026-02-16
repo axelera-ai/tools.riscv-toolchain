@@ -14,20 +14,20 @@ jobs:
   build:
     strategy:
       matrix:
-        os:  [ci-prod-AWS-CPU-X86_64-EKS, ci-prod-AWS-CPU-ARM64-EKS]
+        os: [external-runner-8-32-x86, external-runner-8-32-arm64]
         label: [ubuntu-20.04]
         toolchain: [gcc, llvm]
         include:
-          - os: ci-prod-AWS-CPU-X86_64-EKS
-            container: false
+          - os: external-runner-8-32-x86
             label: ubuntu-20.04
             arch: amd64
-          - os: ci-prod-AWS-CPU-ARM64-EKS
-            container: false
+          - os: external-runner-8-32-arm64
             label: ubuntu-20.04
             arch: arm64
 
-    runs-on: ${{ matrix.os }}
+    runs-on: 
+      group: ci-external-repo
+      labels: ${{ matrix.os }}
 
     container:
       image: ubuntu:20.04
