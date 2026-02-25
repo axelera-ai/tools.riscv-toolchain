@@ -117,28 +117,32 @@ for CRT_MULTILIB in $(${INSTALLPREFIX}/bin/clang -target riscv64-unknown-elf -pr
         ${INSTALLPREFIX}/lib/clang-runtimes/${CRT_MULTILIB_DIR}/lib/libclang_rt.crtend.o
 done
 
-# SPIRV-Tools
-clone_if_not_exists ${SPIRV_TOOLS_TAG} https://github.com/KhronosGroup/SPIRV-Tools.git SPIRV-Tools
-cd SPIRV-Tools && python3 utils/git-sync-deps && cd ..
+if [ "${ENABLE_SPIRV}" = "true" ]; then
+    # SPIRV-Tools
+    clone_if_not_exists ${SPIRV_TOOLS_TAG} https://github.com/KhronosGroup/SPIRV-Tools.git SPIRV-Tools
+    cd SPIRV-Tools && python3 utils/git-sync-deps && cd ..
 
-cmake -S SPIRV-Tools -B ${BUILDPREFIX}/spirv-tools \
-    -DCMAKE_BUILD_TYPE="Release"                   \
-    -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}
+    cmake -S SPIRV-Tools -B ${BUILDPREFIX}/spirv-tools \
+        -DCMAKE_BUILD_TYPE="Release"                   \
+        -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}
 
-echo "[+] Building and installing SPIRV-Tools"
-cmake --build ${BUILDPREFIX}/spirv-tools -j${NPROC} --target install
+    echo "[+] Building and installing SPIRV-Tools"
+    cmake --build ${BUILDPREFIX}/spirv-tools -j${NPROC} --target install
 
-# SPIRV-LLVM-Translator
-clone_if_not_exists ${SPIRV_LLVM_TRANSLATOR_TAG} https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git SPIRV-LLVM-Translator
+    # SPIRV-LLVM-Translator
+    clone_if_not_exists ${SPIRV_LLVM_TRANSLATOR_TAG} https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git SPIRV-LLVM-Translator
 
-cmake -S SPIRV-LLVM-Translator -B ${BUILDPREFIX}/spirv-llvm-translator \
-    -DCMAKE_BUILD_TYPE="Release"                                       \
-    -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}                            \
-    -DLLVM_DIR=${BUILDPREFIX}/llvm/lib/cmake/llvm                      \
-    -DLLVM_SPIRV_BUILD_EXTERNAL=Yes
+    cmake -S SPIRV-LLVM-Translator -B ${BUILDPREFIX}/spirv-llvm-translator \
+        -DCMAKE_BUILD_TYPE="Release"                                       \
+        -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}                            \
+        -DLLVM_DIR=${BUILDPREFIX}/llvm/lib/cmake/llvm                      \
+        -DLLVM_SPIRV_BUILD_EXTERNAL=Yes
 
-echo "[+] Building and installing SPIRV-LLVM-Translator"
-cmake --build ${BUILDPREFIX}/spirv-llvm-translator -j${NPROC} --target install
+    echo "[+] Building and installing SPIRV-LLVM-Translator"
+    cmake --build ${BUILDPREFIX}/spirv-llvm-translator -j${NPROC} --target install
+else
+    echo "[!] Skipping SPIRV tools (ENABLE_SPIRV=${ENABLE_SPIRV})"
+fi
 
 # Save variables to a file
 echo "[+] Saving variables to toolchain directory"
