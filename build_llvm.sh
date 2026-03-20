@@ -8,7 +8,7 @@ SRCPREFIX=${PWD}
 source ./versions.sh
 source ./util/util.sh
 
-clone_if_not_exists ${LLVM_BRANCH} git@github.com:axelera-ai/tools.llvm-project.git llvm-project
+clone_if_not_exists ${LLVM_BRANCH} https://github.com/axelera-ai/tools.llvm-project.git llvm-project
 cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm           \
     -DCMAKE_BUILD_TYPE="Release"                            \
     -DLLVM_USE_SPLIT_DWARF=True                             \
