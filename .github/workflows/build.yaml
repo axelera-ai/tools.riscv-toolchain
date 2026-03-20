@@ -15,57 +15,39 @@ jobs:
     strategy:
       matrix:
         os: [external-runner-8-32-x86, external-runner-8-32-arm64]
-        label: [ubuntu-20.04]
         toolchain: [gcc, llvm]
         include:
           - os: external-runner-8-32-x86
-            label: ubuntu-20.04
             arch: amd64
+            container_image: quay.io/pypa/manylinux_2_28_x86_64
           - os: external-runner-8-32-arm64
-            label: ubuntu-20.04
             arch: arm64
+            container_image: quay.io/pypa/manylinux_2_28_aarch64
 
-    runs-on: 
+    runs-on:
       group: ci-external-repo
       labels: ${{ matrix.os }}
 
     container:
-      image: ubuntu:20.04
+      image: ${{ matrix.container_image }}
 
-    name: Build and package (${{ matrix.label }}, ${{ matrix.arch }}, ${{ matrix.toolchain }})
+    name: Build and package (manylinux_2_28, ${{ matrix.arch }}, ${{ matrix.toolchain }})
 
     steps:
     - name: Install dependencies
-      if: ${{ !contains(matrix.os, 'macOS') }}
       run: |
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update && apt-get install -y \
-          wget \
-          gnupg \
-          lsb-release \
-          ca-certificates \
-          software-properties-common
-        mkdir -p -m 755 /etc/apt/keyrings
+        dnf install -y \
+          libtool flex wget openssh-clients \
+          gmp-devel mpfr-devel libmpc-devel \
+          texinfo gperf patchutils bc \
+          expat-devel ncurses-devel \
+          ninja-build rsync diffutils \
+          dpkg fakeroot
 
-        # GitHub CLI repo
-        wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-          | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
-        chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-          > /etc/apt/sources.list.d/github-cli.list
-
-        # Kitware repo
-        wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
-          | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg
-        DISTRO_CODENAME=$(lsb_release -cs)
-        echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main" \
-          > /etc/apt/sources.list.d/kitware.list
-
-        apt-get update && apt-get install -y \
-          autoconf automake autotools-dev curl python3 python-is-python3 python3-pip \
-          libmpc-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc \
-          zlib1g-dev libexpat-dev ninja-build git libglib2.0-dev libslirp-dev fakeroot gh \
-          cmake libncurses-dev rsync
+        # Install GitHub CLI
+        dnf install -y dnf-plugins-core
+        dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+        dnf install -y gh
 
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -83,7 +65,6 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.TOOLS_LLVM_DEPLOY_KEY }}
 
-    # Set package name per toolchain (only change vs. original request)
     - name: Set package name
       run: |
         echo "PKG_NAME=riscv64-unknown-elf-toolchain-${{ matrix.toolchain }}" >> "$GITHUB_ENV"
@@ -104,24 +85,22 @@ jobs:
 
     - name: Re-name and archive the build directory
       run: |
-        ARCHIVE_NAME="${{ env.PKG_FULL_NAME }}_${{ matrix.label }}_${{ matrix.arch }}.tar.gz"
+        ARCHIVE_NAME="${{ env.PKG_FULL_NAME }}_linux_${{ matrix.arch }}.tar.gz"
         mv install ${{ env.PKG_FULL_NAME }}
         tar -czf "$ARCHIVE_NAME" ${{ env.PKG_FULL_NAME }}
         echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> "$GITHUB_ENV"
 
-    # Create `deb` file
+    # Create .deb package
     - name: Create DEBIAN directory
       run: |
         mkdir -p debian/${{ env.PKG_INSTALL_PREFIX }}
-        mv ${{ env.PKG_FULL_NAME }} debian/${{ env.PKG_INSTALL_PREFIX }}
+        cp -a ${{ env.PKG_FULL_NAME }} debian/${{ env.PKG_INSTALL_PREFIX }}/
         mkdir -p debian/DEBIAN
         find debian -type d | xargs chmod 755
 
     - name: Create control file with version
       run: |
           DEB_PKG_ARCH="${{ matrix.arch }}"
-
-          # Use sed to replace the placeholders with actual values
           sed -e "s|@PKG_VERSION@|${GIT_SEMVER_FROM_TAG}|" \
               -e "s|@PKG_NAME@|${{ env.PKG_VENDOR }}-${PKG_NAME}|" \
               -e "s|@PKG_RELEASE_NUMBER@|${PKG_RELEASE_NUMBER}|" \
@@ -132,7 +111,7 @@ jobs:
     - name: Build .deb package
       run: |
         fakeroot dpkg-deb --build debian
-        DEB_NAME="${{ env.PKG_FULL_NAME }}_${{ matrix.label }}_${{ matrix.arch }}.deb"
+        DEB_NAME="${{ env.PKG_FULL_NAME }}_linux_${{ matrix.arch }}.deb"
         mv debian.deb "$DEB_NAME"
         echo "DEB_NAME=$DEB_NAME" >> "$GITHUB_ENV"
 
@@ -158,7 +137,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload (.deb) to release
-      if: github.event_name == 'release' && contains(matrix.label, 'ubuntu')
+      if: github.event_name == 'release'
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
         ${{ env.DEB_NAME }} --clobber
