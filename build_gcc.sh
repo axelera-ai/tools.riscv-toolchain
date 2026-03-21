@@ -71,6 +71,17 @@ rm -rf binutils-gdb
 
 # Build GCC Stage 1 (w/o standard headers)
 clone_if_not_exists ${GCC_BRANCH} https://gnu.googlesource.com/gcc
+
+# Europa 64-bit-only: Apply patch to force all memory accesses to use
+# ld/sd (64-bit) only.  The Europa APU has unreliable sub-64-bit memory
+# operations, so the RISC-V backend is modified to:
+# - Force 64-bit alignment on all data
+# - Replace all lb/lh/lw/sb/sh/sw with ld/sd + masking
+# - Replace all flw/fsw with fld/fsd
+echo "[+] Applying Europa 64-bit-only memory access patch..."
+cd ${SRCPREFIX}/gcc
+patch -p1 -N < ${SRCPREFIX}/europa-64bit-only.patch || echo "[!] Patch already applied or failed (continuing)"
+
 cd ${SRCPREFIX}/gcc
 ./contrib/download_prerequisites
 mkdir -p ${BUILDPREFIX}/gcc-stage1

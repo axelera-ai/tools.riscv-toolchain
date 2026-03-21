@@ -1,0 +1,509 @@
+--- a/gcc/config/riscv/riscv.h	2026-03-21 22:17:58.989117896 +0200
++++ b/gcc/config/riscv/riscv.h	2026-03-21 21:51:11.719166626 +0200
+@@ -208,9 +208,13 @@
+ /* There is no point aligning anything to a rounder boundary than this.  */
+ #define BIGGEST_ALIGNMENT 128
+ 
+-/* The user-level ISA permits unaligned accesses, but they are not required
+-   of the privileged architecture.  */
+-#define STRICT_ALIGNMENT TARGET_STRICT_ALIGN
++/* Europa 64-bit-only: force all data objects to at least 64-bit alignment
++   so that all memory accesses can use ld/sd exclusively.  */
++#define MINIMUM_ATOMIC_ALIGNMENT 64
++
++/* Force strict alignment -- the Europa APU requires 64-bit aligned accesses
++   and does not reliably support sub-64-bit memory operations.  */
++#define STRICT_ALIGNMENT 1
+ 
+ /* Define this if you wish to imitate the way many other C compilers
+    handle alignment of bitfields and the structures that contain
+@@ -238,35 +242,19 @@
+    mode that should actually be used.  We allow pairs of registers.  */
+ #define MAX_FIXED_MODE_SIZE GET_MODE_BITSIZE (TARGET_64BIT ? TImode : DImode)
+ 
+-/* DATA_ALIGNMENT and LOCAL_ALIGNMENT common definition.  */
++/* DATA_ALIGNMENT and LOCAL_ALIGNMENT common definition.
++   Europa 64-bit-only: force all types to at least 64-bit (8-byte) alignment
++   so that ld/sd can always be used for memory access.  */
+ #define RISCV_EXPAND_ALIGNMENT(COND, TYPE, ALIGN)			\
+-  (((COND) && ((ALIGN) < BITS_PER_WORD)					\
+-    && (TREE_CODE (TYPE) == ARRAY_TYPE					\
+-	|| TREE_CODE (TYPE) == UNION_TYPE				\
+-	|| TREE_CODE (TYPE) == RECORD_TYPE)) ? BITS_PER_WORD : (ALIGN))
+-
+-/* If defined, a C expression to compute the alignment for a static
+-   variable.  TYPE is the data type, and ALIGN is the alignment that
+-   the object would ordinarily have.  The value of this macro is used
+-   instead of that alignment to align the object.
+-
+-   If this macro is not defined, then ALIGN is used.
+-
+-   One use of this macro is to increase alignment of medium-size
+-   data to make it all fit in fewer cache lines.  Another is to
+-   cause character arrays to be word-aligned so that `strcpy' calls
+-   that copy constants to character arrays can be done inline.  */
+-
+-#define DATA_ALIGNMENT(TYPE, ALIGN)						\
+-  RISCV_EXPAND_ALIGNMENT (riscv_align_data_type == riscv_align_data_type_xlen,	\
+-			  TYPE, ALIGN)
+-
+-/* We need this for the same reason as DATA_ALIGNMENT, namely to cause
+-   character arrays to be word-aligned so that `strcpy' calls that copy
+-   constants to character arrays can be done inline, and 'strcmp' can be
+-   optimised to use word loads. */
+-#define LOCAL_ALIGNMENT(TYPE, ALIGN) \
+-  RISCV_EXPAND_ALIGNMENT (true, TYPE, ALIGN)
++  ((ALIGN) < 64 ? 64 : (ALIGN))
++
++/* Force all static/global data to at least 64-bit alignment.  */
++#define DATA_ALIGNMENT(TYPE, ALIGN)					\
++  ((ALIGN) < 64 ? 64 : (ALIGN))
++
++/* Force all local stack data to at least 64-bit alignment.  */
++#define LOCAL_ALIGNMENT(TYPE, ALIGN)					\
++  ((ALIGN) < 64 ? 64 : (ALIGN))
+ 
+ /* Define if operations between registers always perform the operation
+    on the full register even if a narrower mode is specified.  */
+@@ -1168,9 +1156,9 @@
+    in effect but the target has slow unaligned accesses; in this
+    case, cpymem or libcall is more efficient.  */
+ 
++/* Europa 64-bit-only: STRICT_ALIGNMENT is always 1, simplify MOVE_RATIO.  */
+ #define MOVE_RATIO(speed)						\
+-  (!STRICT_ALIGNMENT && riscv_slow_unaligned_access_p ? 1 :		\
+-   (speed) ? RISCV_MAX_MOVE_BYTES_PER_LOOP_ITER / UNITS_PER_WORD :	\
++  ((speed) ? RISCV_MAX_MOVE_BYTES_PER_LOOP_ITER / UNITS_PER_WORD :	\
+    CLEAR_RATIO (speed) / 2)
+ 
+ /* For CLEAR_RATIO, when optimizing for size, give a better estimate
+--- a/gcc/config/riscv/riscv.cc	2026-03-21 22:17:58.989165347 +0200
++++ b/gcc/config/riscv/riscv.cc	2026-03-21 22:00:33.165552845 +0200
+@@ -3671,6 +3671,95 @@
+       return true;
+     }
+ 
++  /* Europa 64-bit-only: Expand sub-word stores to memory into
++     read-modify-write sequences using only ld/sd.
++       (set (mem:QI/HI/SI (address)) (reg_or_0))
++     becomes:
++       aligned_addr = address & ~7
++       bit_offset = (address & 7) * 8
++       old_val = ld aligned_addr
++       old_val = (old_val & ~(mode_mask << bit_offset))
++                 | ((new_val & mode_mask) << bit_offset)
++       sd old_val, aligned_addr  */
++  if (TARGET_64BIT
++      && GET_MODE_CLASS (mode) == MODE_INT
++      && GET_MODE_SIZE (mode).to_constant () < UNITS_PER_WORD
++      && can_create_pseudo_p ()
++      && MEM_P (dest))
++    {
++      unsigned HOST_WIDE_INT mode_size = GET_MODE_SIZE (mode).to_constant ();
++      rtx addr = XEXP (dest, 0);
++      rtx addr_reg = force_reg (Pmode, addr);
++
++      /* Compute aligned address: aligned_addr = addr & ~7.  */
++      rtx aligned_addr = gen_reg_rtx (Pmode);
++      emit_insn (gen_anddi3 (aligned_addr, addr_reg,
++			     gen_int_mode (-8, Pmode)));
++
++      /* Compute byte offset: byte_off = addr & 7.  */
++      rtx byte_off = gen_reg_rtx (Pmode);
++      emit_insn (gen_anddi3 (byte_off, addr_reg, GEN_INT (7)));
++
++      /* Compute bit offset: bit_off = byte_off << 3.  */
++      rtx bit_off = gen_reg_rtx (Pmode);
++      emit_insn (gen_ashldi3 (bit_off, byte_off, GEN_INT (3)));
++
++      /* Load the containing 8-byte word.  */
++      rtx aligned_mem = gen_rtx_MEM (DImode, aligned_addr);
++      set_mem_alias_set (aligned_mem, 0);
++      MEM_VOLATILE_P (aligned_mem) = MEM_VOLATILE_P (dest);
++      rtx old_val = gen_reg_rtx (DImode);
++      emit_move_insn (old_val, aligned_mem);
++
++      /* Create mode mask (e.g. 0xFF for QI, 0xFFFF for HI, etc.).  */
++      unsigned HOST_WIDE_INT mode_mask
++	= ((unsigned HOST_WIDE_INT) 1 << (mode_size * 8)) - 1;
++
++      /* Build shifted mask.  */
++      rtx mask_val = gen_reg_rtx (DImode);
++      emit_move_insn (mask_val, gen_int_mode (mode_mask, DImode));
++      rtx shifted_mask = gen_reg_rtx (DImode);
++      emit_insn (gen_ashldi3 (shifted_mask, mask_val,
++			      gen_lowpart (QImode, bit_off)));
++      rtx inv_mask = gen_reg_rtx (DImode);
++      emit_insn (gen_one_cmpldi2 (inv_mask, shifted_mask));
++
++      /* Clear target bits in old value.  */
++      rtx cleared = gen_reg_rtx (DImode);
++      emit_insn (gen_anddi3 (cleared, old_val, inv_mask));
++
++      /* Get new value into DImode and mask it, then shift into position.  */
++      rtx new_val;
++      if (src == CONST0_RTX (mode))
++	{
++	  new_val = const0_rtx;
++	}
++      else
++	{
++	  rtx src_reg = force_reg (mode, src);
++	  rtx src_di = gen_reg_rtx (DImode);
++	  emit_insn (gen_anddi3 (src_di,
++				 gen_lowpart (DImode, src_reg),
++				 gen_int_mode (mode_mask, DImode)));
++	  new_val = gen_reg_rtx (DImode);
++	  emit_insn (gen_ashldi3 (new_val, src_di,
++				  gen_lowpart (QImode, bit_off)));
++	}
++
++      /* Merge and store back.  */
++      rtx result = gen_reg_rtx (DImode);
++      if (new_val == const0_rtx)
++	result = cleared;
++      else
++	emit_insn (gen_iordi3 (result, cleared, new_val));
++
++      rtx store_mem = gen_rtx_MEM (DImode, aligned_addr);
++      set_mem_alias_set (store_mem, 0);
++      MEM_VOLATILE_P (store_mem) = MEM_VOLATILE_P (dest);
++      emit_move_insn (store_mem, result);
++      return true;
++    }
++
+   if (!register_operand (dest, mode) && !reg_or_0_operand (src, mode))
+     {
+       rtx reg;
+@@ -4685,9 +4774,12 @@
+       if (src_code == MEM)
+ 	switch (width)
+ 	  {
+-	  case 1: return "lbu\t%0,%1";
+-	  case 2: return "lhu\t%0,%1";
+-	  case 4: return "lw\t%0,%1";
++	  /* Europa 64-bit-only: all memory loads must use ld.
++	     Sub-word loads should have been expanded earlier in
++	     riscv_legitimize_move().  Use ld as fallback.  */
++	  case 1: return "ld\t%0,%1";
++	  case 2: return "ld\t%0,%1";
++	  case 4: return "ld\t%0,%1";
+ 	  case 8: return "ld\t%0,%1";
+ 	  }
+ 
+@@ -4746,9 +4838,12 @@
+       if (dest_code == MEM)
+ 	switch (width)
+ 	  {
+-	  case 1: return "sb\t%z1,%0";
+-	  case 2: return "sh\t%z1,%0";
+-	  case 4: return "sw\t%z1,%0";
++	  /* Europa 64-bit-only: all memory stores must use sd.
++	     Sub-word stores should have been expanded earlier in
++	     riscv_legitimize_move().  Use sd as fallback.  */
++	  case 1: return "sd\t%z1,%0";
++	  case 2: return "sd\t%z1,%0";
++	  case 4: return "sd\t%z1,%0";
+ 	  case 8: return "sd\t%z1,%0";
+ 	  }
+     }
+@@ -4770,10 +4865,11 @@
+       if (dest_code == MEM)
+ 	switch (width)
+ 	  {
++	  /* Europa 64-bit-only: all FP stores use fsd.  */
+ 	  case 2:
+-	    return "fsh\t%1,%0";
++	    return "fsd\t%1,%0";
+ 	  case 4:
+-	    return "fsw\t%1,%0";
++	    return "fsd\t%1,%0";
+ 	  case 8:
+ 	    return "fsd\t%1,%0";
+ 	  }
+@@ -4783,10 +4879,11 @@
+       if (src_code == MEM)
+ 	switch (width)
+ 	  {
++	  /* Europa 64-bit-only: all FP loads use fld.  */
+ 	  case 2:
+-	    return "flh\t%0,%1";
++	    return "fld\t%0,%1";
+ 	  case 4:
+-	    return "flw\t%0,%1";
++	    return "fld\t%0,%1";
+ 	  case 8:
+ 	    return "fld\t%0,%1";
+ 	  }
+--- a/gcc/config/riscv/riscv.md	2026-03-21 22:17:58.989294920 +0200
++++ b/gcc/config/riscv/riscv.md	2026-03-21 21:52:55.523156375 +0200
+@@ -1877,18 +1877,27 @@
+ 	    (match_operand:SI 1 "nonimmediate_operand" " r,m")))]
+   "TARGET_64BIT && !TARGET_ZBA && !TARGET_XTHEADBB && !TARGET_XTHEADMEMIDX
+    && !(REG_P (operands[1]) && VL_REG_P (REGNO (operands[1])))"
++  ;; Europa 64-bit-only: always split -- mem case uses ld + shift/shift
+   "@
+    #
+-   lwu\t%0,%1"
+-  "&& reload_completed
+-   && REG_P (operands[1])
+-   && !paradoxical_subreg_p (operands[0])"
++   #"
++  "&& reload_completed"
+   [(set (match_dup 0)
+ 	(ashift:DI (match_dup 1) (const_int 32)))
+    (set (match_dup 0)
+ 	(lshiftrt:DI (match_dup 0) (const_int 32)))]
+-  { operands[1] = gen_lowpart (DImode, operands[1]); }
+-  [(set_attr "move_type" "shift_shift,load")
++  {
++    if (MEM_P (operands[1]))
++      {
++        /* Load full 64 bits first, then zero-extend via shift pair.  */
++        rtx mem = adjust_address (operands[1], DImode, 0);
++        emit_insn (gen_movdi (operands[0], mem));
++        operands[1] = operands[0];
++      }
++    else
++      operands[1] = gen_lowpart (DImode, operands[1]);
++  }
++  [(set_attr "move_type" "shift_shift,shift_shift")
+    (set_attr "type" "load")
+    (set_attr "mode" "DI")])
+ 
+@@ -1903,21 +1912,27 @@
+ 	(zero_extend:GPR
+ 	    (match_operand:HI 1 "nonimmediate_operand" " r,m")))]
+   "!TARGET_ZBB && !TARGET_XTHEADBB && !TARGET_XTHEADMEMIDX"
++  ;; Europa 64-bit-only: always split -- mem case uses ld + shift/shift
+   "@
+    #
+-   lhu\t%0,%1"
+-  "&& reload_completed
+-   && REG_P (operands[1])
+-   && !paradoxical_subreg_p (operands[0])"
++   #"
++  "&& reload_completed"
+   [(set (match_dup 0)
+ 	(ashift:GPR (match_dup 1) (match_dup 2)))
+    (set (match_dup 0)
+ 	(lshiftrt:GPR (match_dup 0) (match_dup 2)))]
+   {
+-    operands[1] = gen_lowpart (<GPR:MODE>mode, operands[1]);
++    if (MEM_P (operands[1]))
++      {
++        rtx mem = adjust_address (operands[1], <GPR:MODE>mode, 0);
++        emit_insn (gen_mov<GPR:mode> (operands[0], mem));
++        operands[1] = operands[0];
++      }
++    else
++      operands[1] = gen_lowpart (<GPR:MODE>mode, operands[1]);
+     operands[2] = GEN_INT(GET_MODE_BITSIZE(<GPR:MODE>mode) - 16);
+   }
+-  [(set_attr "move_type" "shift_shift,load")
++  [(set_attr "move_type" "shift_shift,shift_shift")
+    (set_attr "type" "load")
+    (set_attr "mode" "<GPR:MODE>")])
+ 
+@@ -1927,14 +1942,23 @@
+ 	    (match_operand:QI 1 "nonimmediate_operand")))]
+   "")
+ 
+-(define_insn "*zero_extendqi<SUPERQI:mode>2_internal"
++;; Europa 64-bit-only: convert to insn_and_split so mem case uses ld + andi
++(define_insn_and_split "*zero_extendqi<SUPERQI:mode>2_internal"
+   [(set (match_operand:SUPERQI 0 "register_operand"    "=r,r")
+ 	(zero_extend:SUPERQI
+ 	    (match_operand:QI 1 "nonimmediate_operand" " r,m")))]
+   "!TARGET_XTHEADMEMIDX"
+   "@
+    andi\t%0,%1,0xff
+-   lbu\t%0,%1"
++   #"
++  "&& reload_completed && MEM_P (operands[1])"
++  [(set (match_dup 0) (match_dup 2))
++   (set (match_dup 0) (and:SUPERQI (match_dup 0) (match_dup 3)))]
++  {
++    rtx mem = adjust_address (operands[1], <SUPERQI:MODE>mode, 0);
++    operands[2] = mem;
++    operands[3] = GEN_INT (0xff);
++  }
+   [(set_attr "move_type" "andi,load")
+    (set_attr "type" "arith,load")
+    (set_attr "mode" "<SUPERQI:MODE>")])
+@@ -1960,14 +1984,23 @@
+     }
+ })
+ 
+-(define_insn "*extendsidi2_internal"
++;; Europa 64-bit-only: mem case uses ld + sext.w instead of lw
++(define_insn_and_split "*extendsidi2_internal"
+   [(set (match_operand:DI     0 "register_operand"     "=r,r")
+ 	(sign_extend:DI
+ 	    (match_operand:SI 1 "nonimmediate_operand" " r,m")))]
+   "TARGET_64BIT && !TARGET_XTHEADMEMIDX"
+   "@
+    sext.w\t%0,%1
+-   lw\t%0,%1"
++   #"
++  "&& reload_completed && MEM_P (operands[1])"
++  [(set (match_dup 0) (match_dup 2))
++   (set (match_dup 0) (sign_extend:DI (match_dup 3)))]
++  {
++    rtx mem = adjust_address (operands[1], DImode, 0);
++    operands[2] = mem;
++    operands[3] = gen_lowpart (SImode, operands[0]);
++  }
+   [(set_attr "move_type" "move,load")
+    (set_attr "type" "move,load")
+    (set_attr "mode" "DI")])
+@@ -1977,6 +2010,7 @@
+ 	(sign_extend:SUPERQI (match_operand:SHORT 1 "nonimmediate_operand")))]
+   "")
+ 
++;; Europa 64-bit-only: always split -- mem case uses ld + shift/shift
+ (define_insn_and_split "*extend<SHORT:mode><SUPERQI:mode>2"
+   [(set (match_operand:SUPERQI   0 "register_operand"     "=r,r")
+ 	(sign_extend:SUPERQI
+@@ -1984,19 +2018,27 @@
+   "!TARGET_ZBB && !TARGET_XTHEADBB && !TARGET_XTHEADMEMIDX"
+   "@
+    #
+-   l<SHORT:size>\t%0,%1"
+-  "&& reload_completed
+-   && REG_P (operands[1])
+-   && !paradoxical_subreg_p (operands[0])"
++   #"
++  "&& reload_completed"
+   [(set (match_dup 0) (ashift:SI (match_dup 1) (match_dup 2)))
+    (set (match_dup 0) (ashiftrt:SI (match_dup 0) (match_dup 2)))]
+ {
+-  operands[0] = gen_lowpart (SImode, operands[0]);
+-  operands[1] = gen_lowpart (SImode, operands[1]);
++  if (MEM_P (operands[1]))
++    {
++      rtx mem = adjust_address (operands[1], SImode, 0);
++      emit_insn (gen_movsi (gen_lowpart (SImode, operands[0]), mem));
++      operands[0] = gen_lowpart (SImode, operands[0]);
++      operands[1] = operands[0];
++    }
++  else
++    {
++      operands[0] = gen_lowpart (SImode, operands[0]);
++      operands[1] = gen_lowpart (SImode, operands[1]);
++    }
+   operands[2] = GEN_INT (GET_MODE_BITSIZE (SImode)
+ 			 - GET_MODE_BITSIZE (<SHORT:MODE>mode));
+ }
+-  [(set_attr "move_type" "shift_shift,load")
++  [(set_attr "move_type" "shift_shift,shift_shift")
+    (set_attr "type" "load")
+    (set_attr "mode" "SI")])
+ 
+--- a/gcc/config/riscv/bitmanip.md	2026-03-21 22:17:58.989355370 +0200
++++ b/gcc/config/riscv/bitmanip.md	2026-03-21 21:53:28.055467297 +0200
+@@ -19,13 +19,22 @@
+ 
+ ;; ZBA extension.
+ 
+-(define_insn "*zero_extendsidi2_bitmanip"
++;; Europa 64-bit-only: mem case uses ld + zext.w instead of lwu
++(define_insn_and_split "*zero_extendsidi2_bitmanip"
+   [(set (match_operand:DI 0 "register_operand" "=r,r")
+ 	(zero_extend:DI (match_operand:SI 1 "nonimmediate_operand" "r,m")))]
+   "TARGET_64BIT && TARGET_ZBA && !TARGET_XTHEADMEMIDX"
+   "@
+    zext.w\t%0,%1
+-   lwu\t%0,%1"
++   #"
++  "&& reload_completed && MEM_P (operands[1])"
++  [(set (match_dup 0) (match_dup 2))
++   (set (match_dup 0) (zero_extend:DI (match_dup 3)))]
++  {
++    rtx mem = adjust_address (operands[1], DImode, 0);
++    operands[2] = mem;
++    operands[3] = gen_lowpart (SImode, operands[0]);
++  }
+   [(set_attr "type" "bitmanip,load")
+    (set_attr "mode" "DI")])
+ 
+@@ -306,24 +315,42 @@
+   [(set_attr "type" "<bitmanip_insn>")
+    (set_attr "mode" "DI")])
+ 
+-(define_insn "*zero_extendhi<GPR:mode>2_bitmanip"
++;; Europa 64-bit-only: mem case uses ld + zext.h instead of lhu
++(define_insn_and_split "*zero_extendhi<GPR:mode>2_bitmanip"
+   [(set (match_operand:GPR 0 "register_operand" "=r,r")
+         (zero_extend:GPR (match_operand:HI 1 "nonimmediate_operand" "r,m")))]
+   "TARGET_ZBB && !TARGET_XTHEADMEMIDX"
+   "@
+    zext.h\t%0,%1
+-   lhu\t%0,%1"
++   #"
++  "&& reload_completed && MEM_P (operands[1])"
++  [(set (match_dup 0) (match_dup 2))
++   (set (match_dup 0) (zero_extend:GPR (match_dup 3)))]
++  {
++    rtx mem = adjust_address (operands[1], <GPR:MODE>mode, 0);
++    operands[2] = mem;
++    operands[3] = gen_lowpart (HImode, operands[0]);
++  }
+   [(set_attr "type" "bitmanip,load")
+    (set_attr "mode" "<GPR:MODE>")])
+ 
+-(define_insn "*extend<SHORT:mode><SUPERQI:mode>2_bitmanip"
++;; Europa 64-bit-only: mem case uses ld + sext instead of lh/lb
++(define_insn_and_split "*extend<SHORT:mode><SUPERQI:mode>2_bitmanip"
+   [(set (match_operand:SUPERQI   0 "register_operand"     "=r,r")
+ 	(sign_extend:SUPERQI
+ 	    (match_operand:SHORT 1 "nonimmediate_operand" " r,m")))]
+   "TARGET_ZBB && !TARGET_XTHEADMEMIDX"
+   "@
+    sext.<SHORT:size>\t%0,%1
+-   l<SHORT:size>\t%0,%1"
++   #"
++  "&& reload_completed && MEM_P (operands[1])"
++  [(set (match_dup 0) (match_dup 2))
++   (set (match_dup 0) (sign_extend:SUPERQI (match_dup 3)))]
++  {
++    rtx mem = adjust_address (operands[1], <SUPERQI:MODE>mode, 0);
++    operands[2] = mem;
++    operands[3] = gen_lowpart (<SHORT:MODE>mode, operands[0]);
++  }
+   [(set_attr "type" "bitmanip,load")
+    (set_attr "mode" "<SUPERQI:MODE>")])
+ 
+--- a/gcc/config/riscv/iterators.md	2026-03-21 22:17:58.989399262 +0200
++++ b/gcc/config/riscv/iterators.md	2026-03-21 21:51:28.523326591 +0200
+@@ -130,20 +130,25 @@
+ (define_mode_attr size [(QI "b") (HI "h")])
+ 
+ ;; Mode attributes for loads.
+-(define_mode_attr load [(QI "lb") (HI "lh") (SI "lw") (DI "ld") (HF "flh") (SF "flw") (DF "fld")])
++;; Europa 64-bit-only: all loads use ld/fld regardless of mode.
++(define_mode_attr load [(QI "ld") (HI "ld") (SI "ld") (DI "ld") (HF "fld") (SF "fld") (DF "fld")])
+ 
+ ;; Instruction names for integer loads that aren't explicitly sign or zero
+ ;; extended.  See riscv_output_move and LOAD_EXTEND_OP.
+-(define_mode_attr default_load [(QI "lbu") (HI "lhu") (SI "lw") (DI "ld")])
++;; Europa 64-bit-only: always use ld.
++(define_mode_attr default_load [(QI "ld") (HI "ld") (SI "ld") (DI "ld")])
+ 
+ ;; Mode attribute for FP loads into integer registers.
+-(define_mode_attr softload [(HF "lh") (SF "lw") (DF "ld")])
++;; Europa 64-bit-only: always use ld.
++(define_mode_attr softload [(HF "ld") (SF "ld") (DF "ld")])
+ 
+ ;; Instruction names for stores.
+-(define_mode_attr store [(QI "sb") (HI "sh") (SI "sw") (DI "sd") (HF "fsh") (SF "fsw") (DF "fsd")])
++;; Europa 64-bit-only: all stores use sd/fsd regardless of mode.
++(define_mode_attr store [(QI "sd") (HI "sd") (SI "sd") (DI "sd") (HF "fsd") (SF "fsd") (DF "fsd")])
+ 
+ ;; Instruction names for FP stores from integer registers.
+-(define_mode_attr softstore [(HF "sh") (SF "sw") (DF "sd")])
++;; Europa 64-bit-only: always use sd.
++(define_mode_attr softstore [(HF "sd") (SF "sd") (DF "sd")])
+ 
+ ;; This attribute gives the best constraint to use for registers of
+ ;; a given mode.
