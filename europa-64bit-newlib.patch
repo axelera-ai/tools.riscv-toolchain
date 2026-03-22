@@ -1,0 +1,310 @@
+--- a/newlib/libc/machine/riscv/memcpy-asm.S	2026-03-22 07:53:54.011577007 +0200
++++ b/newlib/libc/machine/riscv/memcpy-asm.S	2026-03-22 09:16:20.088262035 +0200
+@@ -13,16 +13,36 @@
+ .text
+ .global memcpy
+ .type	memcpy, @function
++/* Europa 64-bit-only: byte-by-byte copy using ld/sd read-modify-write.  */
+ memcpy:
+   mv t1, a0
+   beqz a2, 2f
+ 
+ 1:
+-  lb t2, 0(a1)
+-  sb t2, 0(t1)
+-  add   a2, a2, -1
+-  add   t1, t1, 1
+-  add   a1, a1, 1
++  /* Load byte from source via 64-bit read + mask.  */
++  andi t3, a1, -8        /* aligned src addr */
++  andi t4, a1, 7         /* byte offset in src word */
++  slli t4, t4, 3         /* bit offset */
++  ld   t2, 0(t3)         /* load aligned 8-byte word */
++  srl  t2, t2, t4        /* shift byte to position 0 */
++  andi t2, t2, 0xff      /* mask to single byte */
++
++  /* Store byte to dest via 64-bit read-modify-write.  */
++  andi t3, t1, -8        /* aligned dst addr */
++  andi t4, t1, 7         /* byte offset in dst word */
++  slli t4, t4, 3         /* bit offset */
++  ld   t5, 0(t3)         /* read current dst word */
++  li   t6, 0xff
++  sll  t6, t6, t4        /* mask at byte position */
++  not  t6, t6            /* invert mask */
++  and  t5, t5, t6        /* clear byte in dst word */
++  sll  t2, t2, t4        /* shift new byte to position */
++  or   t5, t5, t2        /* insert byte */
++  sd   t5, 0(t3)         /* write back */
++
++  add  a2, a2, -1
++  add  t1, t1, 1
++  add  a1, a1, 1
+   bnez a2, 1b
+ 
+ 2:
+--- a/newlib/libc/machine/riscv/memmove.S	2026-03-22 07:53:54.011602617 +0200
++++ b/newlib/libc/machine/riscv/memmove.S	2026-03-22 09:16:20.088383893 +0200
+@@ -13,6 +13,7 @@
+ .text
+ .global memmove
+ .type	memmove, @function
++/* Europa 64-bit-only: byte-by-byte move using ld/sd read-modify-write.  */
+ memmove:
+   beqz a2, 2f
+ 
+@@ -26,11 +27,30 @@
+   add a1, a1, a4
+ 
+ 1:
+-  lb t2, 0(a1)
+-  sb t2, 0(t1)
+-  add   a2, a2, -1
+-  add   t1, t1, a3
+-  add   a1, a1, a3
++  /* Load byte from source via 64-bit read + mask.  */
++  andi t3, a1, -8
++  andi t4, a1, 7
++  slli t4, t4, 3
++  ld   t2, 0(t3)
++  srl  t2, t2, t4
++  andi t2, t2, 0xff
++
++  /* Store byte to dest via 64-bit read-modify-write.  */
++  andi t3, t1, -8
++  andi t4, t1, 7
++  slli t4, t4, 3
++  ld   t5, 0(t3)
++  li   t6, 0xff
++  sll  t6, t6, t4
++  not  t6, t6
++  and  t5, t5, t6
++  sll  t2, t2, t4
++  or   t5, t5, t2
++  sd   t5, 0(t3)
++
++  add  a2, a2, -1
++  add  t1, t1, a3
++  add  a1, a1, a3
+   bnez a2, 1b
+ 
+ 2:
+--- a/newlib/libc/machine/riscv/memset.S	2026-03-22 07:53:54.011629788 +0200
++++ b/newlib/libc/machine/riscv/memset.S	2026-03-22 09:16:20.088527434 +0200
+@@ -12,76 +12,76 @@
+ .text
+ .global memset
+ .type	memset, @function
++/* Europa 64-bit-only: all memory accesses use ld/sd only.  */
+ memset:
+ #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
+   mv t1, a0
+   beqz a2, 2f
+ 
+ 1:
+-  sb a1, 0(t1)
+-  add   a2, a2, -1
+-  add   t1, t1, 1
++  /* Store byte via 64-bit read-modify-write.  */
++  andi t3, t1, -8
++  andi t4, t1, 7
++  slli t4, t4, 3
++  ld   t5, 0(t3)
++  li   t6, 0xff
++  sll  t6, t6, t4
++  not  t6, t6
++  and  t5, t5, t6
++  andi t2, a1, 0xff
++  sll  t2, t2, t4
++  or   t5, t5, t2
++  sd   t5, 0(t3)
++
++  add  a2, a2, -1
++  add  t1, t1, 1
+   bnez a2, 1b
+ 
+ 2:
+   ret
+ 
+ #else
+-  li t1, 15
++  li t1, 7
+   move a4, a0
+   bleu a2, t1, .Ltiny
+-  and a5, a4, 15
++  and a5, a4, 7
+   bnez a5, .Lmisaligned
+ 
+ .Laligned:
+   bnez a1, .Lwordify
+ 
+ .Lwordified:
+-  and a3, a2, ~15
+-  and a2, a2, 15
++  and a3, a2, ~7
++  and a2, a2, 7
+   add a3, a3, a4
+ 
+-#if __riscv_xlen == 64
+ 1:sd a1, 0(a4)
+-  sd a1, 8(a4)
+-#else
+-1:sw a1, 0(a4)
+-  sw a1, 4(a4)
+-  sw a1, 8(a4)
+-  sw a1, 12(a4)
+-#endif
+-  add a4, a4, 16
++  add a4, a4, 8
+   bltu a4, a3, 1b
+ 
+   bnez a2, .Ltiny
+   ret
+ 
+ .Ltiny:
+-  sub a3, t1, a2
+-  sll a3, a3, 2
+-1:auipc t0, %pcrel_hi(.Ltable)
+-  add a3, a3, t0
+-.option push
+-.option norvc
+-.Ltable_misaligned:
+-  jr a3, %pcrel_lo(1b)
+-.Ltable:
+-  sb a1,14(a4)
+-  sb a1,13(a4)
+-  sb a1,12(a4)
+-  sb a1,11(a4)
+-  sb a1,10(a4)
+-  sb a1, 9(a4)
+-  sb a1, 8(a4)
+-  sb a1, 7(a4)
+-  sb a1, 6(a4)
+-  sb a1, 5(a4)
+-  sb a1, 4(a4)
+-  sb a1, 3(a4)
+-  sb a1, 2(a4)
+-  sb a1, 1(a4)
+-  sb a1, 0(a4)
+-.option pop
++  /* Set remaining bytes (0-7) via read-modify-write.  */
++  beqz a2, .Ldone
++  andi t3, a4, -8
++  ld   t5, 0(t3)
++.Ltiny_loop:
++  andi t4, a4, 7
++  slli t4, t4, 3
++  li   t6, 0xff
++  sll  t6, t6, t4
++  not  t6, t6
++  and  t5, t5, t6
++  andi t2, a1, 0xff
++  sll  t2, t2, t4
++  or   t5, t5, t2
++  add  a4, a4, 1
++  add  a2, a2, -1
++  bnez a2, .Ltiny_loop
++  sd   t5, 0(t3)
++.Ldone:
+   ret
+ 
+ .Lwordify:
+@@ -90,23 +90,32 @@
+   or  a1, a1, a3
+   sll a3, a1, 16
+   or  a1, a1, a3
+-#if __riscv_xlen == 64
+   sll a3, a1, 32
+   or  a1, a1, a3
+-#endif
+   j .Lwordified
+ 
+ .Lmisaligned:
+-  sll a3, a5, 2
+-1:auipc t0, %pcrel_hi(.Ltable_misaligned)
+-  add a3, a3, t0
+-  mv t0, ra
+-  jalr a3, %pcrel_lo(1b)
+-  mv ra, t0
+-
+-  add a5, a5, -16
+-  sub a4, a4, a5
+-  add a2, a2, a5
++  /* Handle leading unaligned bytes to reach 8-byte boundary.  */
++  ld   t5, 0(a4)  /* might be unaligned -- load the word containing a4 */
++  andi t3, a4, -8
++  ld   t5, 0(t3)
++.Lmis_loop:
++  andi t4, a4, 7
++  slli t4, t4, 3
++  li   t6, 0xff
++  sll  t6, t6, t4
++  not  t6, t6
++  and  t5, t5, t6
++  andi t2, a1, 0xff
++  sll  t2, t2, t4
++  or   t5, t5, t2
++  add  a4, a4, 1
++  add  a2, a2, -1
++  beqz a2, .Lmis_done
++  andi t4, a4, 7
++  bnez t4, .Lmis_loop
++.Lmis_done:
++  sd   t5, 0(t3)
+   bleu a2, t1, .Ltiny
+   j .Laligned
+ #endif
+--- a/newlib/libc/machine/riscv/strcmp.S	2026-03-22 07:53:54.011647864 +0200
++++ b/newlib/libc/machine/riscv/strcmp.S	2026-03-22 09:16:20.088662915 +0200
+@@ -14,11 +14,25 @@
+ .text
+ .globl strcmp
+ .type  strcmp, @function
++/* Europa 64-bit-only: byte loads use ld + mask instead of lbu.  */
+ strcmp:
+ #if defined(PREFER_SIZE_OVER_SPEED) || defined(__OPTIMIZE_SIZE__)
+ 1:
+-  lbu   a2, 0(a0)
+-  lbu   a3, 0(a1)
++  /* Load bytes via 64-bit aligned reads + mask.  */
++  andi  t0, a0, -8
++  andi  t1, a0, 7
++  slli  t1, t1, 3
++  ld    a2, 0(t0)
++  srl   a2, a2, t1
++  andi  a2, a2, 0xff
++
++  andi  t0, a1, -8
++  andi  t1, a1, 7
++  slli  t1, t1, 3
++  ld    a3, 0(t0)
++  srl   a3, a3, t1
++  andi  a3, a3, 0xff
++
+   add   a0, a0, 1
+   add   a1, a1, 1
+   bne   a2, a3, 2f
+@@ -161,9 +175,21 @@
+ #endif
+ 	
+ .Lmisaligned:
+-  # misaligned
+-  lbu   a2, 0(a0)
+-  lbu   a3, 0(a1)
++  # misaligned -- Europa 64-bit-only: use ld + mask instead of lbu
++  andi  t0, a0, -8
++  andi  t1, a0, 7
++  slli  t1, t1, 3
++  ld    a2, 0(t0)
++  srl   a2, a2, t1
++  andi  a2, a2, 0xff
++
++  andi  t0, a1, -8
++  andi  t1, a1, 7
++  slli  t1, t1, 3
++  ld    a3, 0(t0)
++  srl   a3, a3, t1
++  andi  a3, a3, 0xff
++
+   add   a0, a0, 1
+   add   a1, a1, 1
+   bne   a2, a3, 1f

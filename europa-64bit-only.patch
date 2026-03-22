@@ -1,5 +1,5 @@
---- a/gcc/config/riscv/riscv.h	2026-03-21 22:17:58.989117896 +0200
-+++ b/gcc/config/riscv/riscv.h	2026-03-21 21:51:11.719166626 +0200
+--- a/gcc/config/riscv/riscv.h	2026-03-22 08:13:21.518637793 +0200
++++ b/gcc/config/riscv/riscv.h	2026-03-22 08:44:55.659055812 +0200
 @@ -208,9 +208,13 @@
  /* There is no point aligning anything to a rounder boundary than this.  */
  #define BIGGEST_ALIGNMENT 128
@@ -77,9 +77,9 @@
     CLEAR_RATIO (speed) / 2)
  
  /* For CLEAR_RATIO, when optimizing for size, give a better estimate
---- a/gcc/config/riscv/riscv.cc	2026-03-21 22:17:58.989165347 +0200
-+++ b/gcc/config/riscv/riscv.cc	2026-03-21 22:00:33.165552845 +0200
-@@ -3671,6 +3671,95 @@
+--- a/gcc/config/riscv/riscv.cc	2026-03-22 08:13:21.517771922 +0200
++++ b/gcc/config/riscv/riscv.cc	2026-03-22 09:01:07.928877918 +0200
+@@ -3671,6 +3671,184 @@
        return true;
      }
  
@@ -172,10 +172,99 @@
 +      return true;
 +    }
 +
++  /* Europa 64-bit-only: Expand sub-word stores to memory into
++     read-modify-write sequences using only ld/sd.
++       (set (mem:QI/HI/SI (address)) (reg_or_0))
++     becomes:
++       aligned_addr = address & ~7
++       bit_offset = (address & 7) * 8
++       old_val = ld aligned_addr
++       old_val = (old_val & ~(mode_mask << bit_offset))
++                 | ((new_val & mode_mask) << bit_offset)
++       sd old_val, aligned_addr  */
++  if (TARGET_64BIT
++      && GET_MODE_CLASS (mode) == MODE_INT
++      && GET_MODE_SIZE (mode).to_constant () < UNITS_PER_WORD
++      && can_create_pseudo_p ()
++      && MEM_P (dest))
++    {
++      unsigned HOST_WIDE_INT mode_size = GET_MODE_SIZE (mode).to_constant ();
++      rtx addr = XEXP (dest, 0);
++      rtx addr_reg = force_reg (Pmode, addr);
++
++      /* Compute aligned address: aligned_addr = addr & ~7.  */
++      rtx aligned_addr = gen_reg_rtx (Pmode);
++      emit_insn (gen_anddi3 (aligned_addr, addr_reg,
++			     gen_int_mode (-8, Pmode)));
++
++      /* Compute byte offset: byte_off = addr & 7.  */
++      rtx byte_off = gen_reg_rtx (Pmode);
++      emit_insn (gen_anddi3 (byte_off, addr_reg, GEN_INT (7)));
++
++      /* Compute bit offset: bit_off = byte_off << 3.  */
++      rtx bit_off = gen_reg_rtx (Pmode);
++      emit_insn (gen_ashldi3 (bit_off, byte_off, GEN_INT (3)));
++
++      /* Load the containing 8-byte word.  */
++      rtx aligned_mem = gen_rtx_MEM (DImode, aligned_addr);
++      set_mem_alias_set (aligned_mem, 0);
++      MEM_VOLATILE_P (aligned_mem) = MEM_VOLATILE_P (dest);
++      rtx old_val = gen_reg_rtx (DImode);
++      emit_move_insn (old_val, aligned_mem);
++
++      /* Create mode mask (e.g. 0xFF for QI, 0xFFFF for HI, etc.).  */
++      unsigned HOST_WIDE_INT mode_mask
++	= ((unsigned HOST_WIDE_INT) 1 << (mode_size * 8)) - 1;
++
++      /* Build shifted mask.  */
++      rtx mask_val = gen_reg_rtx (DImode);
++      emit_move_insn (mask_val, gen_int_mode (mode_mask, DImode));
++      rtx shifted_mask = gen_reg_rtx (DImode);
++      emit_insn (gen_ashldi3 (shifted_mask, mask_val,
++			      gen_lowpart (QImode, bit_off)));
++      rtx inv_mask = gen_reg_rtx (DImode);
++      emit_insn (gen_one_cmpldi2 (inv_mask, shifted_mask));
++
++      /* Clear target bits in old value.  */
++      rtx cleared = gen_reg_rtx (DImode);
++      emit_insn (gen_anddi3 (cleared, old_val, inv_mask));
++
++      /* Get new value into DImode and mask it, then shift into position.  */
++      rtx new_val;
++      if (src == CONST0_RTX (mode))
++	{
++	  new_val = const0_rtx;
++	}
++      else
++	{
++	  rtx src_reg = force_reg (mode, src);
++	  rtx src_di = gen_reg_rtx (DImode);
++	  emit_insn (gen_anddi3 (src_di,
++				 gen_lowpart (DImode, src_reg),
++				 gen_int_mode (mode_mask, DImode)));
++	  new_val = gen_reg_rtx (DImode);
++	  emit_insn (gen_ashldi3 (new_val, src_di,
++				  gen_lowpart (QImode, bit_off)));
++	}
++
++      /* Merge and store back.  */
++      rtx result = gen_reg_rtx (DImode);
++      if (new_val == const0_rtx)
++	result = cleared;
++      else
++	emit_insn (gen_iordi3 (result, cleared, new_val));
++
++      rtx store_mem = gen_rtx_MEM (DImode, aligned_addr);
++      set_mem_alias_set (store_mem, 0);
++      MEM_VOLATILE_P (store_mem) = MEM_VOLATILE_P (dest);
++      emit_move_insn (store_mem, result);
++      return true;
++    }
++
    if (!register_operand (dest, mode) && !reg_or_0_operand (src, mode))
      {
        rtx reg;
-@@ -4685,9 +4774,12 @@
+@@ -4685,9 +4863,12 @@
        if (src_code == MEM)
  	switch (width)
  	  {
@@ -191,7 +280,7 @@
  	  case 8: return "ld\t%0,%1";
  	  }
  
-@@ -4746,9 +4838,12 @@
+@@ -4746,9 +4927,12 @@
        if (dest_code == MEM)
  	switch (width)
  	  {
@@ -207,36 +296,36 @@
  	  case 8: return "sd\t%z1,%0";
  	  }
      }
-@@ -4770,10 +4865,11 @@
+@@ -4770,10 +4954,11 @@
        if (dest_code == MEM)
  	switch (width)
  	  {
-+	  /* Europa 64-bit-only: all FP stores use fsd.  */
++	  /* Europa 64-bit-only: use fsd when D extension available.  */
  	  case 2:
 -	    return "fsh\t%1,%0";
-+	    return "fsd\t%1,%0";
++	    return TARGET_DOUBLE_FLOAT ? "fsd\t%1,%0" : "fsh\t%1,%0";
  	  case 4:
 -	    return "fsw\t%1,%0";
-+	    return "fsd\t%1,%0";
++	    return TARGET_DOUBLE_FLOAT ? "fsd\t%1,%0" : "fsw\t%1,%0";
  	  case 8:
  	    return "fsd\t%1,%0";
  	  }
-@@ -4783,10 +4879,11 @@
+@@ -4783,10 +4968,11 @@
        if (src_code == MEM)
  	switch (width)
  	  {
-+	  /* Europa 64-bit-only: all FP loads use fld.  */
++	  /* Europa 64-bit-only: use fld when D extension available.  */
  	  case 2:
 -	    return "flh\t%0,%1";
-+	    return "fld\t%0,%1";
++	    return TARGET_DOUBLE_FLOAT ? "fld\t%0,%1" : "flh\t%0,%1";
  	  case 4:
 -	    return "flw\t%0,%1";
-+	    return "fld\t%0,%1";
++	    return TARGET_DOUBLE_FLOAT ? "fld\t%0,%1" : "flw\t%0,%1";
  	  case 8:
  	    return "fld\t%0,%1";
  	  }
---- a/gcc/config/riscv/riscv.md	2026-03-21 22:17:58.989294920 +0200
-+++ b/gcc/config/riscv/riscv.md	2026-03-21 21:52:55.523156375 +0200
+--- a/gcc/config/riscv/riscv.md	2026-03-22 08:13:21.518637793 +0200
++++ b/gcc/config/riscv/riscv.md	2026-03-22 08:44:55.660749862 +0200
 @@ -1877,18 +1877,27 @@
  	    (match_operand:SI 1 "nonimmediate_operand" " r,m")))]
    "TARGET_64BIT && !TARGET_ZBA && !TARGET_XTHEADBB && !TARGET_XTHEADMEMIDX
@@ -400,8 +489,8 @@
     (set_attr "type" "load")
     (set_attr "mode" "SI")])
  
---- a/gcc/config/riscv/bitmanip.md	2026-03-21 22:17:58.989355370 +0200
-+++ b/gcc/config/riscv/bitmanip.md	2026-03-21 21:53:28.055467297 +0200
+--- a/gcc/config/riscv/bitmanip.md	2026-03-22 08:13:21.517494607 +0200
++++ b/gcc/config/riscv/bitmanip.md	2026-03-22 08:44:55.661118286 +0200
 @@ -19,13 +19,22 @@
  
  ;; ZBA extension.
@@ -474,15 +563,18 @@
    [(set_attr "type" "bitmanip,load")
     (set_attr "mode" "<SUPERQI:MODE>")])
  
---- a/gcc/config/riscv/iterators.md	2026-03-21 22:17:58.989399262 +0200
-+++ b/gcc/config/riscv/iterators.md	2026-03-21 21:51:28.523326591 +0200
-@@ -130,20 +130,25 @@
+--- a/gcc/config/riscv/iterators.md	2026-03-22 08:13:21.517771922 +0200
++++ b/gcc/config/riscv/iterators.md	2026-03-22 08:44:55.661274680 +0200
+@@ -130,20 +130,30 @@
  (define_mode_attr size [(QI "b") (HI "h")])
  
  ;; Mode attributes for loads.
--(define_mode_attr load [(QI "lb") (HI "lh") (SI "lw") (DI "ld") (HF "flh") (SF "flw") (DF "fld")])
-+;; Europa 64-bit-only: all loads use ld/fld regardless of mode.
-+(define_mode_attr load [(QI "ld") (HI "ld") (SI "ld") (DI "ld") (HF "fld") (SF "fld") (DF "fld")])
++;; Europa 64-bit-only: integer loads are overridden in riscv_output_move() to
++;; use ld.  Keep original QI/HI/SI mapping here because pic.md appends 'u'
++;; suffix.  Keep original FP mapping because flw/flh are needed for
++;; multilib targets without D extension.  riscv_output_move() handles
++;; the flw->fld, flh->fld replacement for targets with D.
+ (define_mode_attr load [(QI "lb") (HI "lh") (SI "lw") (DI "ld") (HF "flh") (SF "flw") (DF "fld")])
  
  ;; Instruction names for integer loads that aren't explicitly sign or zero
  ;; extended.  See riscv_output_move and LOAD_EXTEND_OP.
@@ -497,8 +589,9 @@
  
  ;; Instruction names for stores.
 -(define_mode_attr store [(QI "sb") (HI "sh") (SI "sw") (DI "sd") (HF "fsh") (SF "fsw") (DF "fsd")])
-+;; Europa 64-bit-only: all stores use sd/fsd regardless of mode.
-+(define_mode_attr store [(QI "sd") (HI "sd") (SI "sd") (DI "sd") (HF "fsd") (SF "fsd") (DF "fsd")])
++;; Europa 64-bit-only: integer stores overridden in riscv_output_move().
++;; Keep original FP mapping for multilib compatibility.
++(define_mode_attr store [(QI "sd") (HI "sd") (SI "sd") (DI "sd") (HF "fsh") (SF "fsw") (DF "fsd")])
  
  ;; Instruction names for FP stores from integer registers.
 -(define_mode_attr softstore [(HF "sh") (SF "sw") (DF "sd")])
@@ -507,3 +600,67 @@
  
  ;; This attribute gives the best constraint to use for registers of
  ;; a given mode.
+--- a/gcc/config/riscv/pic.md	2026-03-22 08:13:21.517771922 +0200
++++ b/gcc/config/riscv/pic.md	2026-03-22 08:44:55.669458582 +0200
+@@ -30,11 +30,12 @@
+   [(set_attr "type" "load")
+    (set (attr "length") (const_int 8))])
+ 
++;; Europa 64-bit-only: PIC sign/zero-extending loads use ld instead of lh/lb/lwu/lhu/lbu
+ (define_insn "*local_pic_load_s<SUBX:mode>"
+   [(set (match_operand:SUPERQI 0 "register_operand" "=r")
+ 	(sign_extend:SUPERQI (mem:SUBX (match_operand 1 "absolute_symbolic_operand" ""))))]
+   "USE_LOAD_ADDRESS_MACRO (operands[1])"
+-  "<SUBX:load>\t%0,%1"
++  "ld\t%0,%1"
+   [(set_attr "type" "load")
+    (set (attr "length") (const_int 8))])
+ 
+@@ -42,7 +43,7 @@
+   [(set (match_operand:SUPERQI 0 "register_operand" "=r")
+ 	(zero_extend:SUPERQI (mem:SUBX (match_operand 1 "absolute_symbolic_operand" ""))))]
+   "USE_LOAD_ADDRESS_MACRO (operands[1])"
+-  "<SUBX:load>u\t%0,%1"
++  "ld\t%0,%1"
+   [(set_attr "type" "load")
+    (set (attr "length") (const_int 8))])
+ 
+--- a/gcc/config/riscv/sync-rvwmo.md	2026-03-22 08:13:21.518637793 +0200
++++ b/gcc/config/riscv/sync-rvwmo.md	2026-03-22 08:44:55.669587630 +0200
+@@ -57,15 +57,16 @@
+     enum memmodel model = (enum memmodel) INTVAL (operands[2]);
+     model = memmodel_base (model);
+ 
++    /* Europa 64-bit-only: always use ld for atomic loads.  */
+     if (model == MEMMODEL_SEQ_CST)
+       return "fence\trw,rw\;"
+-	     "<load>\t%0,%1\;"
++	     "ld\t%0,%1\;"
+ 	     "fence\tr,rw";
+     if (model == MEMMODEL_ACQUIRE)
+-      return "<load>\t%0,%1\;"
++      return "ld\t%0,%1\;"
+ 	     "fence\tr,rw";
+     else
+-      return "<load>\t%0,%1";
++      return "ld\t%0,%1";
+   }
+   [(set_attr "type" "multi")
+    (set (attr "length")
+--- a/gcc/config/riscv/sync-ztso.md	2026-03-22 08:13:21.518637793 +0200
++++ b/gcc/config/riscv/sync-ztso.md	2026-03-22 08:44:55.669688173 +0200
+@@ -51,11 +51,12 @@
+     enum memmodel model = (enum memmodel) INTVAL (operands[2]);
+     model = memmodel_base (model);
+ 
++    /* Europa 64-bit-only: always use ld for atomic loads.  */
+     if (model == MEMMODEL_SEQ_CST)
+       return "fence\trw,rw\;"
+-	     "<load>\t%0,%1";
++	     "ld\t%0,%1";
+     else
+-      return "<load>\t%0,%1";
++      return "ld\t%0,%1";
+   }
+   [(set_attr "type" "multi")
+    (set (attr "length")

@@ -117,6 +117,13 @@ cd ../..
 # Build newlib
 clone_if_not_exists ${NEWLIB_BRANCH} https://cygwin.com/git/newlib-cygwin.git newlib
 
+# Europa 64-bit-only: Apply patch to newlib assembly routines (memcpy, memmove,
+# memset, strcmp, setjmp) to use only ld/sd memory accesses.
+echo "[+] Applying Europa 64-bit-only newlib patch..."
+cd ${SRCPREFIX}/newlib
+patch -p1 -N < ${SRCPREFIX}/europa-64bit-newlib.patch || echo "[!] Newlib patch already applied or failed (continuing)"
+cd ${SRCPREFIX}
+
 PATH=${INSTALLPREFIX}/bin:${PATH}
 mkdir -p ${BUILDPREFIX}/newlib
 cd ${BUILDPREFIX}/newlib
