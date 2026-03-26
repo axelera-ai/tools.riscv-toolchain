@@ -7,6 +7,7 @@ SRCPREFIX=${PWD}
 
 source ./versions.sh
 source ./util/util.sh
+source ./util/build_runtimes.sh
 
 clone_if_not_exists ${LLVM_BRANCH} https://github.com/axelera-ai/tools.llvm-project.git llvm-project
 cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm           \
@@ -25,10 +26,6 @@ cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm           \
 ## Build and install
 echo "[+] Building and installing LLVM"
 cmake --build ${BUILDPREFIX}/llvm -j${NPROC} --target install
-
-# Copy multilib.yaml to runtime dir
-mkdir -p ${INSTALLPREFIX}/lib/clang-runtimes/
-cp ${SRCPREFIX}/multilib.yaml ${INSTALLPREFIX}/lib/clang-runtimes/
 
 # Build newlib
 clone_if_not_exists ${NEWLIB_BRANCH} https://cygwin.com/git/newlib-cygwin.git newlib
@@ -73,73 +70,10 @@ for CRT_MULTILIB in $(${INSTALLPREFIX}/bin/clang -target riscv64-unknown-elf -pr
       ${INSTALLPREFIX}/lib/clang-runtimes/${CRT_MULTILIB_DIR}/include/
 done
 
-for CRT_MULTILIB in $(${INSTALLPREFIX}/bin/clang -target riscv64-unknown-elf -print-multi-lib 2>/dev/null); do
-    CRT_MULTILIB_DIR=$(echo ${CRT_MULTILIB} | sed 's/;.*//')
-    CRT_MULTILIB_OPT=$(echo ${CRT_MULTILIB} | sed 's/.*;//' | sed 's/@/-/' | sed 's/@/ -/g')
-    CRT_MULTILIB_BDIR=$(echo ${CRT_MULTILIB} | sed 's/.*;//' | sed 's/@/_/g')
-    echo "Multilib: \"${CRT_MULTILIB_DIR}\" -> \"${CRT_MULTILIB_OPT}\""
-
-    cmake -S llvm-project/compiler-rt -B ${BUILDPREFIX}/compiler-rt64${CRT_MULTILIB_BDIR}  \
-        -DCMAKE_SYSTEM_NAME=Linux                                                          \
-        -DCMAKE_INSTALL_PREFIX=${BUILDPREFIX}/compiler-rt64${CRT_MULTILIB_BDIR}-inst       \
-        -DCMAKE_C_COMPILER=${INSTALLPREFIX}/bin/clang${EXE}                                \
-        -DCMAKE_CXX_COMPILER=${INSTALLPREFIX}/bin/clang${EXE}                              \
-        -DCMAKE_AR=${INSTALLPREFIX}/bin/llvm-ar${EXE}                                      \
-        -DCMAKE_NM=${INSTALLPREFIX}/bin/llvm-nm${EXE}                                      \
-        -DCMAKE_RANLIB=${INSTALLPREFIX}/bin/llvm-ranlib${EXE}                              \
-        -DCMAKE_C_COMPILER_TARGET="riscv64-unknown-elf"                                    \
-        -DCMAKE_CXX_COMPILER_TARGET="riscv64-unknown-elf"                                  \
-        -DCMAKE_ASM_COMPILER_TARGET="riscv64-unknown-elf"                                  \
-        -DCMAKE_C_FLAGS="${CRT_MULTILIB_OPT} -O2"                                          \
-        -DCMAKE_CXX_FLAGS="${CRT_MULTILIB_OPT} -O2"                                        \
-        -DCMAKE_ASM_FLAGS="${CRT_MULTILIB_OPT} -O2"                                        \
-        -DCMAKE_EXE_LINKER_FLAGS="-nostartfiles -nostdlib"                                 \
-        -DCOMPILER_RT_BAREMETAL_BUILD=ON                                                   \
-        -DCOMPILER_RT_BUILD_BUILTINS=ON                                                    \
-        -DCOMPILER_RT_BUILD_MEMPROF=OFF                                                    \
-        -DCOMPILER_RT_BUILD_LIBFUZZER=OFF                                                  \
-        -DCOMPILER_RT_BUILD_PROFILE=OFF                                                    \
-        -DCOMPILER_RT_BUILD_SANITIZERS=OFF                                                 \
-        -DCOMPILER_RT_BUILD_XRAY=OFF                                                       \
-        -DCOMPILER_RT_BUILD_CTX_PROFILE=OFF                                                \
-        -DCOMPILER_RT_DEFAULT_TARGET_ONLY=ON                                               \
-        -DCOMPILER_RT_OS_DIR=""                                                            \
-        -DLLVM_CONFIG_PATH=${BUILDPREFIX}/llvm/bin/llvm-config                             \
-
-    echo "[+] Building and installing compiler-rt"
-    cmake --build ${BUILDPREFIX}/compiler-rt64${CRT_MULTILIB_BDIR} -j${NPROC} --target install
-
-    cp ${BUILDPREFIX}/compiler-rt64${CRT_MULTILIB_BDIR}-inst/lib/libclang_rt.builtins-riscv64.a \
-        ${INSTALLPREFIX}/lib/clang-runtimes/${CRT_MULTILIB_DIR}/lib/libclang_rt.builtins.a
-    cp ${BUILDPREFIX}/compiler-rt64${CRT_MULTILIB_BDIR}-inst/lib/clang_rt.crtbegin-riscv64.o \
-        ${INSTALLPREFIX}/lib/clang-runtimes/${CRT_MULTILIB_DIR}/lib/clang_rt.crtbegin.o
-    cp ${BUILDPREFIX}/compiler-rt64${CRT_MULTILIB_BDIR}-inst/lib/clang_rt.crtend-riscv64.o \
-        ${INSTALLPREFIX}/lib/clang-runtimes/${CRT_MULTILIB_DIR}/lib/libclang_rt.crtend.o
-done
+build_compiler_rt ${INSTALLPREFIX} ${BUILDPREFIX} ${INSTALLPREFIX} ${BUILDPREFIX}/llvm/bin/llvm-config ${SRCPREFIX}
 
 if [ "${ENABLE_SPIRV}" = "true" ]; then
-    # SPIRV-Tools
-    clone_if_not_exists ${SPIRV_TOOLS_TAG} https://github.com/KhronosGroup/SPIRV-Tools.git SPIRV-Tools
-    cd SPIRV-Tools && python3 utils/git-sync-deps && cd ..
-
-    cmake -S SPIRV-Tools -B ${BUILDPREFIX}/spirv-tools \
-        -DCMAKE_BUILD_TYPE="Release"                   \
-        -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}
-
-    echo "[+] Building and installing SPIRV-Tools"
-    cmake --build ${BUILDPREFIX}/spirv-tools -j${NPROC} --target install
-
-    # SPIRV-LLVM-Translator
-    clone_if_not_exists ${SPIRV_LLVM_TRANSLATOR_TAG} https://github.com/KhronosGroup/SPIRV-LLVM-Translator.git SPIRV-LLVM-Translator
-
-    cmake -S SPIRV-LLVM-Translator -B ${BUILDPREFIX}/spirv-llvm-translator \
-        -DCMAKE_BUILD_TYPE="Release"                                       \
-        -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}                            \
-        -DLLVM_DIR=${BUILDPREFIX}/llvm/lib/cmake/llvm                      \
-        -DLLVM_SPIRV_BUILD_EXTERNAL=Yes
-
-    echo "[+] Building and installing SPIRV-LLVM-Translator"
-    cmake --build ${BUILDPREFIX}/spirv-llvm-translator -j${NPROC} --target install
+    build_spirv ${BUILDPREFIX} ${INSTALLPREFIX} ${BUILDPREFIX}/llvm
 else
     echo "[!] Skipping SPIRV tools (ENABLE_SPIRV=${ENABLE_SPIRV})"
 fi
