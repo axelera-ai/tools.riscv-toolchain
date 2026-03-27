@@ -1,6 +1,7 @@
 binutils-gdb
 build
 install
+install-llvm-minimal
 gcc
 newlib
 llvm-project
