@@ -1,7 +1,10 @@
-if [[ "$(uname)" == "Darwin" ]]; then
-    NPROC=$(sysctl -n hw.logicalcpu)
-else
-    NPROC=$(nproc)
+# SPDX-License-Identifier: Apache-2.0
+if [[ -z "${NPROC:-}" ]]; then
+    if [[ "$(uname)" == "Darwin" ]]; then
+        NPROC=$(sysctl -n hw.logicalcpu)
+    else
+        NPROC=$(nproc)
+    fi
 fi
 
 # Print the GCC and G++ used in this build

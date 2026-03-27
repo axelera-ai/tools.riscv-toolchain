@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: Apache-2.0
 name: Build and Release Toolchain
 
 on:
@@ -13,58 +14,40 @@ jobs:
   build:
     strategy:
       matrix:
-        os:  [ci-prod-AWS-CPU-X86_64-EKS, ci-prod-AWS-CPU-ARM64-EKS]
-        label: [ubuntu-20.04]
+        os: [external-runner-8-32-x86, external-runner-8-32-arm64]
         toolchain: [gcc, llvm]
         include:
-          - os: ci-prod-AWS-CPU-X86_64-EKS
-            container: false
-            label: ubuntu-20.04
+          - os: external-runner-8-32-x86
             arch: amd64
-          - os: ci-prod-AWS-CPU-ARM64-EKS
-            container: false
-            label: ubuntu-20.04
+            container_image: quay.io/pypa/manylinux_2_28_x86_64
+          - os: external-runner-8-32-arm64
             arch: arm64
+            container_image: quay.io/pypa/manylinux_2_28_aarch64
 
-    runs-on: ${{ matrix.os }}
+    runs-on:
+      group: ci-external-repo
+      labels: ${{ matrix.os }}
 
     container:
-      image: ubuntu:20.04
+      image: ${{ matrix.container_image }}
 
-    name: Build and package (${{ matrix.label }}, ${{ matrix.arch }}, ${{ matrix.toolchain }})
+    name: Build and package (manylinux_2_28, ${{ matrix.arch }}, ${{ matrix.toolchain }})
 
     steps:
     - name: Install dependencies
-      if: ${{ !contains(matrix.os, 'macOS') }}
       run: |
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update && apt-get install -y \
-          wget \
-          gnupg \
-          lsb-release \
-          ca-certificates \
-          software-properties-common
-        mkdir -p -m 755 /etc/apt/keyrings
+        dnf install -y \
+          libtool flex wget openssh-clients \
+          gmp-devel mpfr-devel libmpc-devel \
+          texinfo gperf patchutils bc \
+          expat-devel ncurses-devel \
+          ninja-build rsync diffutils \
+          dpkg fakeroot
 
-        # GitHub CLI repo
-        wget -qO- https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-          | tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null
-        chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-          > /etc/apt/sources.list.d/github-cli.list
-
-        # Kitware repo
-        wget -qO- https://apt.kitware.com/keys/kitware-archive-latest.asc \
-          | gpg --dearmor -o /usr/share/keyrings/kitware-archive-keyring.gpg
-        DISTRO_CODENAME=$(lsb_release -cs)
-        echo "deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ $DISTRO_CODENAME main" \
-          > /etc/apt/sources.list.d/kitware.list
-
-        apt-get update && apt-get install -y \
-          autoconf automake autotools-dev curl python3 python-is-python3 python3-pip \
-          libmpc-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc \
-          zlib1g-dev libexpat-dev ninja-build git libglib2.0-dev libslirp-dev fakeroot gh \
-          cmake libncurses-dev rsync
+        # Install GitHub CLI
+        dnf install -y dnf-plugins-core
+        dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+        dnf install -y gh
 
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -82,7 +65,6 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.TOOLS_LLVM_DEPLOY_KEY }}
 
-    # Set package name per toolchain (only change vs. original request)
     - name: Set package name
       run: |
         echo "PKG_NAME=riscv64-unknown-elf-toolchain-${{ matrix.toolchain }}" >> "$GITHUB_ENV"
@@ -101,26 +83,97 @@ jobs:
         echo "PKG_RELEASE_NUMBER=$PKG_RELEASE_NUMBER" >> "$GITHUB_ENV"
         echo "PKG_DEPENDS=$PKG_DEPENDS" >> "$GITHUB_ENV"
 
+    # --- Build minimal LLVM toolchain (only for llvm jobs) ---
+    - name: Build minimal LLVM toolchain
+      if: matrix.toolchain == 'llvm'
+      run: |
+        ./build_llvm_minimal.sh
+
+    - name: Determine minimal semantic version
+      if: matrix.toolchain == 'llvm'
+      run: |
+        cat install-llvm-minimal/VERSION-llvm-minimal
+        . install-llvm-minimal/VERSION-llvm-minimal
+        MINIMAL_PKG_NAME="riscv64-unknown-elf-toolchain-llvm-minimal"
+        echo "MINIMAL_PKG_FULL_NAME=${{ env.PKG_VENDOR }}-${MINIMAL_PKG_NAME}_${GIT_SEMVER_FROM_TAG}" >> "$GITHUB_ENV"
+
+    - name: Archive minimal toolchain
+      if: matrix.toolchain == 'llvm'
+      run: |
+        MINIMAL_ARCHIVE="${{ env.MINIMAL_PKG_FULL_NAME }}_linux_${{ matrix.arch }}.tar.gz"
+        mv install-llvm-minimal ${{ env.MINIMAL_PKG_FULL_NAME }}
+        tar -czf "$MINIMAL_ARCHIVE" ${{ env.MINIMAL_PKG_FULL_NAME }}
+        echo "MINIMAL_ARCHIVE=$MINIMAL_ARCHIVE" >> "$GITHUB_ENV"
+
+    - name: Create minimal .deb package
+      if: matrix.toolchain == 'llvm'
+      run: |
+        mkdir -p debian-minimal/${{ env.PKG_INSTALL_PREFIX }}
+        cp -a ${{ env.MINIMAL_PKG_FULL_NAME }} debian-minimal/${{ env.PKG_INSTALL_PREFIX }}/
+        mkdir -p debian-minimal/DEBIAN
+        find debian-minimal -type d | xargs chmod 755
+
+        MINIMAL_PKG_NAME="riscv64-unknown-elf-toolchain-llvm-minimal"
+        sed -e "s|@PKG_VERSION@|${GIT_SEMVER_FROM_TAG}|" \
+            -e "s|@PKG_NAME@|${{ env.PKG_VENDOR }}-${MINIMAL_PKG_NAME}|" \
+            -e "s|@PKG_RELEASE_NUMBER@|${PKG_RELEASE_NUMBER}|" \
+            -e "s|@DEB_PKG_ARCH@|${{ matrix.arch }}|" \
+            debian-pkg-control.llvm-minimal > debian-minimal/DEBIAN/control
+
+        fakeroot dpkg-deb --build debian-minimal
+        MINIMAL_DEB="${{ env.MINIMAL_PKG_FULL_NAME }}_linux_${{ matrix.arch }}.deb"
+        mv debian-minimal.deb "$MINIMAL_DEB"
+        echo "MINIMAL_DEB=$MINIMAL_DEB" >> "$GITHUB_ENV"
+
+    - name: Upload minimal (.tar.gz) build artifact
+      if: matrix.toolchain == 'llvm'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.MINIMAL_ARCHIVE }}
+        path: ${{ env.MINIMAL_ARCHIVE }}
+
+    - name: Upload minimal (.deb) build artifact
+      if: matrix.toolchain == 'llvm'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.MINIMAL_DEB }}
+        path: ${{ env.MINIMAL_DEB }}
+
+    - name: Upload minimal (.tar.gz) to release
+      if: matrix.toolchain == 'llvm' && github.event_name == 'release'
+      run: |
+        gh release upload ${{ github.event.release.tag_name }} \
+        ${{ env.MINIMAL_ARCHIVE }} --clobber
+      env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Upload minimal (.deb) to release
+      if: matrix.toolchain == 'llvm' && github.event_name == 'release'
+      run: |
+        gh release upload ${{ github.event.release.tag_name }} \
+        ${{ env.MINIMAL_DEB }} --clobber
+      env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # --- Package the main toolchain ---
     - name: Re-name and archive the build directory
       run: |
-        ARCHIVE_NAME="${{ env.PKG_FULL_NAME }}_${{ matrix.label }}_${{ matrix.arch }}.tar.gz"
+        ARCHIVE_NAME="${{ env.PKG_FULL_NAME }}_linux_${{ matrix.arch }}.tar.gz"
         mv install ${{ env.PKG_FULL_NAME }}
         tar -czf "$ARCHIVE_NAME" ${{ env.PKG_FULL_NAME }}
         echo "ARCHIVE_NAME=$ARCHIVE_NAME" >> "$GITHUB_ENV"
 
-    # Create `deb` file
+    # Create .deb package
     - name: Create DEBIAN directory
       run: |
         mkdir -p debian/${{ env.PKG_INSTALL_PREFIX }}
-        mv ${{ env.PKG_FULL_NAME }} debian/${{ env.PKG_INSTALL_PREFIX }}
+        cp -a ${{ env.PKG_FULL_NAME }} debian/${{ env.PKG_INSTALL_PREFIX }}/
         mkdir -p debian/DEBIAN
         find debian -type d | xargs chmod 755
 
     - name: Create control file with version
       run: |
           DEB_PKG_ARCH="${{ matrix.arch }}"
-
-          # Use sed to replace the placeholders with actual values
           sed -e "s|@PKG_VERSION@|${GIT_SEMVER_FROM_TAG}|" \
               -e "s|@PKG_NAME@|${{ env.PKG_VENDOR }}-${PKG_NAME}|" \
               -e "s|@PKG_RELEASE_NUMBER@|${PKG_RELEASE_NUMBER}|" \
@@ -131,7 +184,7 @@ jobs:
     - name: Build .deb package
       run: |
         fakeroot dpkg-deb --build debian
-        DEB_NAME="${{ env.PKG_FULL_NAME }}_${{ matrix.label }}_${{ matrix.arch }}.deb"
+        DEB_NAME="${{ env.PKG_FULL_NAME }}_linux_${{ matrix.arch }}.deb"
         mv debian.deb "$DEB_NAME"
         echo "DEB_NAME=$DEB_NAME" >> "$GITHUB_ENV"
 
@@ -157,7 +210,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Upload (.deb) to release
-      if: github.event_name == 'release' && contains(matrix.label, 'ubuntu')
+      if: github.event_name == 'release'
       run: |
         gh release upload ${{ github.event.release.tag_name }} \
         ${{ env.DEB_NAME }} --clobber
