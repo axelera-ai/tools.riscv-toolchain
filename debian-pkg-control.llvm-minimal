@@ -1,0 +1,6 @@
+Package: @PKG_NAME@-@PKG_VERSION@-@PKG_RELEASE_NUMBER@
+Maintainer: Axelera AI
+Priority: optional
+Architecture: @DEB_PKG_ARCH@
+Version: @PKG_VERSION@-@PKG_RELEASE_NUMBER@
+Description: Axelera RISC-V minimal toolchain containing only clang, lld, llvm-ar, and compiler-rt. Custom patches (https://github.com/axelera-ai/tools.llvm-project) are applied.
