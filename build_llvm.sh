@@ -27,6 +27,10 @@ cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm           \
 echo "[+] Building and installing LLVM"
 cmake --build ${BUILDPREFIX}/llvm -j${NPROC} --target install
 
+# Copy multilib.yaml so clang -print-multi-lib reports all variants
+mkdir -p ${INSTALLPREFIX}/lib/clang-runtimes/
+cp ${SRCPREFIX}/multilib.yaml ${INSTALLPREFIX}/lib/clang-runtimes/
+
 # Build newlib
 clone_if_not_exists ${NEWLIB_BRANCH} https://cygwin.com/git/newlib-cygwin.git newlib
 
