@@ -74,6 +74,59 @@ jobs:
         git config --global --add safe.directory "$GITHUB_WORKSPACE"
         ./build_${{ matrix.toolchain }}.sh
 
+    - name: Sanity check toolchain
+      run: |
+        FAIL=0
+
+        if [ "${{ matrix.toolchain }}" = "llvm" ]; then
+          # Verify clang can compile a minimal program
+          echo 'int main() { return 0; }' > /tmp/test.c
+          install/bin/clang --target=riscv64-unknown-elf -c /tmp/test.c -o /dev/null \
+            || { echo "FAIL: clang cannot compile"; FAIL=1; }
+
+          # Verify all expected multilib variants have newlib headers and compiler-rt
+          EXPECTED_DIRS="riscv64-unknown-elf/rv64ima/lp64 riscv64-unknown-elf/rv64imac/lp64 riscv64-unknown-elf/rv64imafdc/lp64f riscv64-unknown-elf/rv64imafdc/lp64d"
+          for dir in $EXPECTED_DIRS; do
+            if [ ! -f "install/lib/clang-runtimes/${dir}/include/assert.h" ]; then
+              echo "FAIL: missing newlib headers in ${dir}"
+              FAIL=1
+            fi
+            if [ ! -f "install/lib/clang-runtimes/${dir}/lib/libclang_rt.builtins.a" ]; then
+              echo "FAIL: missing compiler-rt builtins in ${dir}"
+              FAIL=1
+            fi
+          done
+
+          # Verify multilib.yaml is present
+          if [ ! -f "install/lib/clang-runtimes/multilib.yaml" ]; then
+            echo "FAIL: missing multilib.yaml"
+            FAIL=1
+          fi
+        fi
+
+        if [ "${{ matrix.toolchain }}" = "gcc" ]; then
+          # Verify key binaries exist
+          for bin in gcc g++ gdb ld as objdump; do
+            if [ ! -x "install/bin/riscv64-unknown-elf-${bin}" ]; then
+              echo "FAIL: missing binary riscv64-unknown-elf-${bin}"
+              FAIL=1
+            fi
+          done
+
+          # Verify multilib support (should have multiple lib dirs)
+          MULTILIB_COUNT=$(find install/lib/gcc/riscv64-unknown-elf -name "libgcc.a" | wc -l)
+          if [ "$MULTILIB_COUNT" -lt 2 ]; then
+            echo "FAIL: expected multiple multilib variants, found ${MULTILIB_COUNT}"
+            FAIL=1
+          fi
+        fi
+
+        if [ "$FAIL" -ne 0 ]; then
+          echo "Sanity check FAILED"
+          exit 1
+        fi
+        echo "All sanity checks passed"
+
     - name: Determine semantic version
       run: |
         cat install/VERSION-${{ matrix.toolchain }}
