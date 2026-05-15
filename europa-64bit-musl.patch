@@ -1,0 +1,49 @@
+Europa 64-bit-only musl libc patch.
+
+Converts the 2 RISC-V assembly files that use sub-word memory operations to
+use ld/sd exclusively, matching the Europa APU requirement that all memory
+accesses must be 64-bit.
+
+fenv.S: fenv_t will be at least 64-bit aligned due to DATA_ALIGNMENT forcing
+  minimum 64-bit alignment. Use sd/ld for the FCSR value stored as fenv_t.
+
+syscall_cp.s: the cancellation flag (pthread_t::cancelbuf->__next->__cancel)
+  is checked with bnez after the load; a 64-bit load of a 64-bit aligned int
+  is correct on Europa (upper bits will be zero from compiler alignment).
+
+Upstream-Status: Inappropriate [embedded specific - Europa APU hardware requirement]
+Signed-off-by: Axelera AI <sw@axelera.ai>
+
+--- a/src/fenv/riscv64/fenv.S
++++ b/src/fenv/riscv64/fenv.S
+@@ -38,7 +38,7 @@
+ .type fegetenv, %function
+ fegetenv:
+ 	frcsr t0
+-	sw t0, 0(a0)
++	sd t0, 0(a0)	/* Europa: fenv_t is 64-bit aligned, use sd */
+ 	li a0, 0
+ 	ret
+ 
+--- a/src/fenv/riscv64/fenv.S
++++ b/src/fenv/riscv64/fenv.S
+@@ -48,7 +48,7 @@
+ 	li t2, -1
+ 	li t1, 0
+ 	beq a0, t2, 1f
+-	lw t1, 0(a0)
++	ld t1, 0(a0)	/* Europa: fenv_t is 64-bit aligned, use ld */
+ 1:	fscsr t1
+ 	li a0, 0
+ 	ret
+--- a/src/thread/riscv64/syscall_cp.s
++++ b/src/thread/riscv64/syscall_cp.s
+@@ -10,7 +10,7 @@
+ .type __syscall_cp_asm, %function
+ __syscall_cp_asm:
+ __cp_begin:
+-	lw t0, 0(a0)
++	ld t0, 0(a0)	/* Europa: cancellation flag at 64-bit aligned addr, use ld */
+ 	bnez t0, __cp_cancel
+ 
+ 	mv t0, a1
