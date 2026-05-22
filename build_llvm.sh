@@ -10,17 +10,17 @@ source ./util/util.sh
 source ./util/build_runtimes.sh
 
 clone_if_not_exists ${LLVM_BRANCH} https://github.com/axelera-ai/tools.llvm-project.git llvm-project
-cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm           \
-    -DCMAKE_BUILD_TYPE="Release"                            \
-    -DLLVM_USE_SPLIT_DWARF=True                             \
-    -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}                 \
-    -DLLVM_BUILD_TESTS=False                                \
-    -DLLVM_DEFAULT_TARGET_TRIPLE="riscv64-unknown-elf"      \
-    -DLLVM_TARGETS_TO_BUILD="RISCV"                         \
-    -DLLDB_USE_SYSTEM_DEBUGSERVER=ON                        \
-    -DLLDB_INCLUDE_TESTS=OFF                                \
-    -DCLANG_DEFAULT_LINKER=lld                              \
-    -DCLANG_LINKS_TO_CREATE="riscv64-clang;riscv64-clang++" \
+cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm                   \
+    -DCMAKE_BUILD_TYPE="Release"                                    \
+    -DLLVM_USE_SPLIT_DWARF=True                                     \
+    -DCMAKE_INSTALL_PREFIX=${INSTALLPREFIX}                         \
+    -DLLVM_BUILD_TESTS=False                                        \
+    -DLLVM_DEFAULT_TARGET_TRIPLE="riscv64-unknown-elf"              \
+    -DLLVM_TARGETS_TO_BUILD="RISCV"                                 \
+    -DLLDB_USE_SYSTEM_DEBUGSERVER=ON                                \
+    -DLLDB_INCLUDE_TESTS=OFF                                        \
+    -DCLANG_DEFAULT_LINKER=lld                                      \
+    -DCLANG_LINKS_TO_CREATE="riscv64-clang;riscv64-clang++;clang++" \
     -DLLVM_ENABLE_PROJECTS="clang;lld;lldb;clang-tools-extra"
 
 ## Build and install
