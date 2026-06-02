@@ -13,6 +13,11 @@ source ./versions.sh
 source ./util/util.sh
 source ./util/build_runtimes.sh
 
+# The minimal toolchain never bundles SPIR-V tooling, regardless of what
+# versions.sh sets. Consumers of the minimal toolchain (e.g. the wheel)
+# don't need llvm-spirv or libLLVMSPIRVLib/libSPIRV-Tools.
+ENABLE_SPIRV=false
+
 # Verify the full dev toolchain exists
 if [ ! -x "${DEVTOOLCHAIN}/bin/clang" ]; then
     echo "Error: Full toolchain not found at ${DEVTOOLCHAIN}. Run build_llvm.sh first."
