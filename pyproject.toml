@@ -37,17 +37,3 @@ infer-tag = true
 
 [tool.hatch.build.targets.wheel.force-include]
 "install-llvm-minimal" = "axelera/riscv_llvm_toolchain_minimal"
-
-[tool.cibuildwheel]
-skip = ["*-manylinux_i686", "*-musllinux_*"]
-# Python-agnostic wheel: build with one Python version only.
-build = "cp310-*"
-
-[tool.cibuildwheel.linux]
-# Install LLVM/newlib build dependencies (mirrors .github/workflows/build.yaml).
-before-all = [
-    "dnf install -y libtool flex wget gmp-devel mpfr-devel libmpc-devel texinfo gperf patchutils bc expat-devel ncurses-devel ninja-build rsync diffutils",
-    # Build the toolchain once per container. ENABLE_SPIRV=false keeps wheel size down.
-    "ENABLE_SPIRV=false bash ./build_llvm.sh",
-    "ENABLE_SPIRV=false bash ./build_llvm_minimal.sh",
-]
