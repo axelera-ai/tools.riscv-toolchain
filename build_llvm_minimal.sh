@@ -4,10 +4,10 @@
 # Requires the full toolchain (build_llvm.sh) to be built first for
 # compiler-rt cross-compilation.
 
-INSTALLPREFIX="${PWD}/install-llvm-minimal"
-BUILDPREFIX=${PWD}/build/llvm-minimal
-SRCPREFIX=${PWD}
-DEVTOOLCHAIN="${PWD}/install"
+INSTALLPREFIX="${INSTALLPREFIX:-${PWD}/install-llvm-minimal}"
+BUILDPREFIX="${BUILDPREFIX:-${PWD}/build/llvm-minimal}"
+SRCPREFIX="${SRCPREFIX:-${PWD}}"
+DEVTOOLCHAIN="${DEVTOOLCHAIN:-${PWD}/install}"
 
 source ./versions.sh
 source ./util/util.sh
