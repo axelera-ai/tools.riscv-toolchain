@@ -14,7 +14,6 @@ authors = [
 [project.scripts]
 "clang" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:clang"
 "clang++" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:clangxx"
-"clang-cpp" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:clang_cpp"
 "riscv64-clang" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:riscv64_clang"
 "riscv64-clang++" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:riscv64_clangxx"
 "lld" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:lld"
@@ -36,4 +35,8 @@ pure-python = false
 infer-tag = true
 
 [tool.hatch.build.targets.wheel.force-include]
-"install-llvm-minimal" = "axelera/riscv_llvm_toolchain_minimal"
+# CI produces install-llvm-minimal-wheel/ as a deduplicated copy of
+# install-llvm-minimal/ (see the "Stage wheel toolchain dir" workflow step).
+# The original install-llvm-minimal/ is kept untouched for the .deb / .tar.gz
+# artifacts which can carry symlinks natively.
+"install-llvm-minimal-wheel" = "axelera/riscv_llvm_toolchain_minimal"

@@ -101,6 +101,36 @@ jobs:
         echo "MINIMAL_PKG_FULL_NAME=${{ env.PKG_VENDOR }}-${MINIMAL_PKG_NAME}_${GIT_SEMVER_FROM_TAG}" >> "$GITHUB_ENV"
 
     # --- Build Python wheel from install-llvm-minimal/ (llvm jobs only) ---
+    # Wheels can't carry symlinks, so hatchling would otherwise resolve them to
+    # a few hundred MiB of duplicate clang/lld copies. Stage a wheel-only copy
+    # of install-llvm-minimal/, prune the multicall-symlink duplicates from it,
+    # and point hatchling at the staged dir. The original install-llvm-minimal/
+    # is left untouched so the .deb and .tar.gz steps below keep all names.
+    # entrypoints.py dispatches via argv[0] into the canonical binary; ld.lld
+    # is kept as a physical copy because the bundled clang looks for
+    # dirname(clang)/ld.lld first when picking a linker.
+    - name: Stage wheel toolchain dir
+      if: matrix.toolchain == 'llvm'
+      run: |
+        rm -rf install-llvm-minimal-wheel
+        cp -a install-llvm-minimal install-llvm-minimal-wheel
+        cd install-llvm-minimal-wheel/bin
+        # Materialize the symlinks we want to keep, before deleting their
+        # targets — otherwise hatchling would see them as dangling.
+        for name in clang ld.lld; do
+          if [ -L "$name" ]; then
+            target=$(readlink -f "$name")
+            rm "$name"
+            cp -p "$target" "$name"
+          fi
+        done
+        # Drop duplicates. clang-20 is the original canonical (now duplicated
+        # as the materialized 'clang'); 'lld' is the original canonical (now
+        # duplicated as the materialized 'ld.lld'). The remaining names were
+        # symlinks that entrypoints.py dispatches to via argv[0].
+        rm -f clang-20 clang++ riscv64-clang riscv64-clang++ \
+              lld ld64.lld lld-link wasm-ld
+
     - name: Stamp wheel version
       if: matrix.toolchain == 'llvm'
       run: |
