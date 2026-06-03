@@ -1,9 +1,9 @@
 #!/bin/bash -xe
 # SPDX-License-Identifier: Apache-2.0
 
-INSTALLPREFIX="${PWD}/install"
-BUILDPREFIX=${PWD}/build
-SRCPREFIX=${PWD}
+INSTALLPREFIX="${INSTALLPREFIX:-${PWD}/install}"
+BUILDPREFIX="${BUILDPREFIX:-${PWD}/build}"
+SRCPREFIX="${SRCPREFIX:-${PWD}}"
 
 source ./versions.sh
 source ./util/util.sh

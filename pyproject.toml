@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "axelera-riscv-llvm-toolchain-minimal"
+dynamic = ["version"]
+description = "Axelera RISC-V minimal LLVM toolchain (clang, lld, llvm-ar, compiler-rt)"
+requires-python = ">=3.10"
+authors = [
+    {name = "Axelera AI", email = "support@axelera.ai"}
+]
+
+[project.scripts]
+"clang" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:clang"
+"clang++" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:clangxx"
+"riscv64-clang" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:riscv64_clang"
+"riscv64-clang++" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:riscv64_clangxx"
+"lld" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:lld"
+"ld.lld" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:ld_lld"
+"ld64.lld" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:ld64_lld"
+"wasm-ld" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:wasm_ld"
+"lld-link" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:lld_link"
+"llvm-ar" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:llvm_ar"
+
+[tool.hatch.version]
+path = "VERSION"
+pattern = "^(?P<version>[0-9][^\\s]*)"
+
+[tool.hatch.build.targets.wheel]
+packages = ["python/axelera"]
+# Bundled binaries make this wheel platform-specific. infer-tag picks up the
+# host platform (e.g. linux_x86_64); auditwheel repair re-tags to manylinux.
+pure-python = false
+infer-tag = true
+
+[tool.hatch.build.targets.wheel.force-include]
+# CI produces install-llvm-minimal-wheel/ as a deduplicated copy of
+# install-llvm-minimal/ (see the "Stage wheel toolchain dir" workflow step).
+# The original install-llvm-minimal/ is kept untouched for the .deb / .tar.gz
+# artifacts which can carry symlinks natively.
+"install-llvm-minimal-wheel" = "axelera/riscv_llvm_toolchain_minimal"

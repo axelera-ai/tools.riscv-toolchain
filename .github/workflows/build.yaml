@@ -100,6 +100,107 @@ jobs:
         MINIMAL_PKG_NAME="riscv64-unknown-elf-toolchain-llvm-minimal"
         echo "MINIMAL_PKG_FULL_NAME=${{ env.PKG_VENDOR }}-${MINIMAL_PKG_NAME}_${GIT_SEMVER_FROM_TAG}" >> "$GITHUB_ENV"
 
+    # --- Build Python wheel from install-llvm-minimal/ (llvm jobs only) ---
+    # Wheels can't carry symlinks, so hatchling would otherwise resolve them to
+    # a few hundred MiB of duplicate clang/lld copies. Stage a wheel-only copy
+    # of install-llvm-minimal/, prune the multicall-symlink duplicates from it,
+    # and point hatchling at the staged dir. The original install-llvm-minimal/
+    # is left untouched so the .deb and .tar.gz steps below keep all names.
+    # entrypoints.py dispatches via argv[0] into the canonical binary; ld.lld
+    # is kept as a physical copy because the bundled clang looks for
+    # dirname(clang)/ld.lld first when picking a linker.
+    - name: Stage wheel toolchain dir
+      if: matrix.toolchain == 'llvm'
+      run: |
+        rm -rf install-llvm-minimal-wheel
+        cp -a install-llvm-minimal install-llvm-minimal-wheel
+        cd install-llvm-minimal-wheel/bin
+        # Materialize the symlinks we want to keep, before deleting their
+        # targets — otherwise hatchling would see them as dangling.
+        for name in clang ld.lld; do
+          if [ -L "$name" ]; then
+            target=$(readlink -f "$name")
+            rm "$name"
+            cp -p "$target" "$name"
+          fi
+        done
+        # Drop duplicates. clang-X is the original canonical (now duplicated
+        # as the materialized 'clang'); 'lld' is the original canonical (now
+        # duplicated as the materialized 'ld.lld'). The remaining names were
+        # symlinks that entrypoints.py dispatches to via argv[0].
+        rm -f clang-* clang++ riscv64-clang riscv64-clang++ \
+              lld ld64.lld lld-link wasm-ld
+
+    - name: Stamp wheel version
+      if: matrix.toolchain == 'llvm'
+      run: |
+        . install-llvm-minimal/VERSION-llvm-minimal
+        WHEEL_VERSION=$(GIT_SEMVER_FROM_TAG="$GIT_SEMVER_FROM_TAG" \
+          /opt/python/cp310-cp310/bin/python3 util/pep440-from-git-semver.py)
+        echo "${WHEEL_VERSION}" > VERSION
+        echo "Wheel version: ${WHEEL_VERSION}"
+
+    - name: Install Python wheel build tooling
+      if: matrix.toolchain == 'llvm'
+      run: |
+        # The manylinux containers ship multiple Python versions under /opt/python/.
+        # Pick cp310 (matches [tool.cibuildwheel] build = "cp310-*").
+        echo "/opt/python/cp310-cp310/bin" >> "$GITHUB_PATH"
+        /opt/python/cp310-cp310/bin/python -m pip install --upgrade build auditwheel
+
+    - name: Build wheel
+      if: matrix.toolchain == 'llvm'
+      run: |
+        python -m build --wheel --outdir wheelhouse-raw .
+        # Restore VERSION so any later semver-from-git invocation sees a clean tree.
+        git checkout -- VERSION
+
+    - name: Repair wheel with auditwheel
+      if: matrix.toolchain == 'llvm'
+      run: |
+        case "${{ matrix.arch }}" in
+          amd64) AUDITWHEEL_PLAT=manylinux_2_28_x86_64 ;;
+          arm64) AUDITWHEEL_PLAT=manylinux_2_28_aarch64 ;;
+          *) echo "Unknown arch ${{ matrix.arch }}"; exit 1 ;;
+        esac
+        mkdir -p wheelhouse
+        auditwheel show wheelhouse-raw/*.whl || true
+        auditwheel repair --plat "${AUDITWHEEL_PLAT}" wheelhouse-raw/*.whl -w wheelhouse
+        ls -l wheelhouse
+
+    - name: Upload wheel artifact
+      if: matrix.toolchain == 'llvm'
+      uses: actions/upload-artifact@v4
+      with:
+        name: wheel-llvm-minimal-${{ matrix.arch }}
+        path: wheelhouse/*.whl
+        if-no-files-found: error
+
+    - name: Upload wheel to release
+      if: matrix.toolchain == 'llvm' && github.event_name == 'release'
+      run: |
+        gh release upload ${{ github.event.release.tag_name }} \
+          wheelhouse/*.whl --clobber
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # TODO: enable once JF_USER/JF_ACCESS_TOKEN are configured for this
+    # repository.
+#    - name: Publish wheel to Artifactory PyPI
+#      if: matrix.toolchain == 'llvm' && github.event_name == 'release'
+#      env:
+#        TWINE_USERNAME: ${{ secrets.JF_USER }}
+#        TWINE_PASSWORD: ${{ secrets.JF_ACCESS_TOKEN }}
+#      run: |
+#        if [ -z "${TWINE_USERNAME}" ] || [ -z "${TWINE_PASSWORD}" ]; then
+#          echo "JF_USER / JF_ACCESS_TOKEN secrets not configured; skipping PyPI publish."
+#          exit 0
+#        fi
+#        python -m pip install --upgrade twine
+#        python -m twine upload \
+#          --repository-url https://artifactory.production.aws.axelera.ai/artifactory/api/pypi/swci-axelera-pypi-repo \
+#          wheelhouse/*.whl
+
     - name: Archive minimal toolchain
       if: matrix.toolchain == 'llvm'
       run: |

@@ -4,14 +4,19 @@
 # Requires the full toolchain (build_llvm.sh) to be built first for
 # compiler-rt cross-compilation.
 
-INSTALLPREFIX="${PWD}/install-llvm-minimal"
-BUILDPREFIX=${PWD}/build/llvm-minimal
-SRCPREFIX=${PWD}
-DEVTOOLCHAIN="${PWD}/install"
+INSTALLPREFIX="${INSTALLPREFIX:-${PWD}/install-llvm-minimal}"
+BUILDPREFIX="${BUILDPREFIX:-${PWD}/build/llvm-minimal}"
+SRCPREFIX="${SRCPREFIX:-${PWD}}"
+DEVTOOLCHAIN="${DEVTOOLCHAIN:-${PWD}/install}"
 
 source ./versions.sh
 source ./util/util.sh
 source ./util/build_runtimes.sh
+
+# The minimal toolchain never bundles SPIR-V tooling, regardless of what
+# versions.sh sets. Consumers of the minimal toolchain (e.g. the wheel)
+# don't need llvm-spirv or libLLVMSPIRVLib/libSPIRV-Tools.
+ENABLE_SPIRV=false
 
 # Verify the full dev toolchain exists
 if [ ! -x "${DEVTOOLCHAIN}/bin/clang" ]; then
