@@ -124,11 +124,11 @@ jobs:
             cp -p "$target" "$name"
           fi
         done
-        # Drop duplicates. clang-20 is the original canonical (now duplicated
+        # Drop duplicates. clang-X is the original canonical (now duplicated
         # as the materialized 'clang'); 'lld' is the original canonical (now
         # duplicated as the materialized 'ld.lld'). The remaining names were
         # symlinks that entrypoints.py dispatches to via argv[0].
-        rm -f clang-20 clang++ riscv64-clang riscv64-clang++ \
+        rm -f clang-* clang++ riscv64-clang riscv64-clang++ \
               lld ld64.lld lld-link wasm-ld
 
     - name: Stamp wheel version
