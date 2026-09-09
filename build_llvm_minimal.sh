@@ -1,6 +1,6 @@
 #!/bin/bash -xe
 # SPDX-License-Identifier: Apache-2.0
-# Minimal LLVM toolchain: clang + lld + llvm-ar + llvm-objcopy + llvm.objdump + compiler-rt + libc.
+# Minimal LLVM toolchain: clang + lld + llvm-ar + llvm-objcopy + llvm-objdump + compiler-rt only.
 # Requires the full toolchain (build_llvm.sh) to be built first for
 # compiler-rt cross-compilation.
 
@@ -63,8 +63,6 @@ cmake --build ${BUILDPREFIX}/llvm -j${NPROC} --target install-distribution
 # Strip installed binaries
 echo "[+] Stripping binaries"
 find ${INSTALLPREFIX}/bin -type f -executable | xargs strip 2>/dev/null || true
-
-install_newlib_from_toolchain ${DEVTOOLCHAIN} ${INSTALLPREFIX}
 
 build_compiler_rt ${DEVTOOLCHAIN} ${BUILDPREFIX} ${INSTALLPREFIX} ${BUILDPREFIX}/llvm/bin/llvm-config ${SRCPREFIX}
 

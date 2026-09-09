@@ -100,33 +100,3 @@ build_spirv() {
     echo "[+] Building and installing SPIRV-LLVM-Translator"
     cmake --build ${BPREFIX}/spirv-llvm-translator -j${NPROC} --target install
 }
-
-install_newlib_from_toolchain() {
-    # installed toolchain to copy newlib out of
-    local FROM=$1
-    # toolchain to copy it into
-    local TO=$2
-
-    for CRT_MULTILIB in $(${FROM}/bin/clang -target riscv64-unknown-elf -print-multi-lib 2>/dev/null); do
-        local CRT_MULTILIB_DIR=$(echo ${CRT_MULTILIB} | sed 's/;.*//')
-        local SRC_DIR=${FROM}/lib/clang-runtimes/${CRT_MULTILIB_DIR}
-        local DST_DIR=${TO}/lib/clang-runtimes/${CRT_MULTILIB_DIR}
-
-        if [ ! -d "${SRC_DIR}/include" ]; then
-            echo "Error: no newlib headers at ${SRC_DIR}/include." \
-                 "Run build_llvm.sh first so the full toolchain has newlib."
-            exit 1
-        fi
-
-        echo "[+] Installing newlib for multilib \"${CRT_MULTILIB_DIR}\""
-        mkdir -p ${DST_DIR}/lib
-        cp -r ${SRC_DIR}/include/ ${DST_DIR}/include/
-        for f in ${SRC_DIR}/lib/*.a ${SRC_DIR}/lib/*.o ${SRC_DIR}/lib/*.specs; do
-            case "$(basename ${f})" in
-                # compiler-rt is already built so skip that.
-                *clang_rt*) continue ;;
-            esac
-            cp ${f} ${DST_DIR}/lib/
-        done
-    done
-}

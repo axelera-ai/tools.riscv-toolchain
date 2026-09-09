@@ -24,23 +24,12 @@ if [ "$TOOLCHAIN" = "llvm" ]; then
         ${PREFIX}/bin/clang --target=riscv64-unknown-elf -x c -c - -o /dev/null \
         || { echo "FAIL: clang cannot compile"; FAIL=1; }
 
-    # Verify all expected multilib variants have newlib headers and compiler-rt
-    printf '#include <string.h>\nint f(char*d,const char*s){return (int)strlen(s)+(d!=0);}\n' | \
-        ${PREFIX}/bin/clang --target=riscv64-unknown-elf -x c -c - -o /dev/null \
-        || { echo "FAIL: clang cannot compile against libc headers"; FAIL=1; }
-
+    # Verify all expected multilib variants have compiler-rt
     for dir in \
         riscv64-unknown-elf/rv64ima/lp64 \
         riscv64-unknown-elf/rv64imac/lp64 \
         riscv64-unknown-elf/rv64imafdc/lp64f \
         riscv64-unknown-elf/rv64imafdc/lp64d; do
-        check "${PREFIX}/lib/clang-runtimes/${dir}/include/assert.h"
-        check "${PREFIX}/lib/clang-runtimes/${dir}/include/string.h"
-        check "${PREFIX}/lib/clang-runtimes/${dir}/lib/libc.a"
-        check "${PREFIX}/lib/clang-runtimes/${dir}/lib/libm.a"
-        check "${PREFIX}/lib/clang-runtimes/${dir}/lib/libgloss.a"
-        check "${PREFIX}/lib/clang-runtimes/${dir}/lib/crt0.o"
-        check "${PREFIX}/lib/clang-runtimes/${dir}/lib/nosys.specs"
         check "${PREFIX}/lib/clang-runtimes/${dir}/lib/libclang_rt.builtins.a"
     done
 
