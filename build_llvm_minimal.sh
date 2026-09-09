@@ -1,6 +1,6 @@
 #!/bin/bash -xe
 # SPDX-License-Identifier: Apache-2.0
-# Minimal LLVM toolchain: clang + lld + llvm-ar + compiler-rt only.
+# Minimal LLVM toolchain: clang + lld + llvm-ar + llvm-objcopy + llvm-objdump + compiler-rt only.
 # Requires the full toolchain (build_llvm.sh) to be built first for
 # compiler-rt cross-compilation.
 
@@ -54,7 +54,7 @@ cmake -S llvm-project/llvm -B ${BUILDPREFIX}/llvm                  \
     -DLLVM_INCLUDE_BENCHMARKS=OFF                                  \
     -DLLVM_INCLUDE_DOCS=OFF                                        \
     -DLLVM_BUILD_TESTS=OFF                                         \
-    -DLLVM_DISTRIBUTION_COMPONENTS="clang;lld;llvm-ar;clang-resource-headers"
+    -DLLVM_DISTRIBUTION_COMPONENTS="clang;lld;llvm-ar;llvm-objcopy;llvm-objdump;clang-resource-headers"
 
 ## Build and install (distribution target only installs listed components)
 echo "[+] Building and installing minimal LLVM"

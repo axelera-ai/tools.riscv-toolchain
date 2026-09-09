@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "axelera-riscv-llvm-toolchain-minimal"
 dynamic = ["version"]
-description = "Axelera RISC-V minimal LLVM toolchain (clang, lld, llvm-ar, compiler-rt)"
+description = "Axelera RISC-V minimal LLVM toolchain (clang, lld, llvm-ar, llvm-objcopy, llvm-objdump, compiler-rt)"
 requires-python = ">=3.10"
 authors = [
     {name = "Axelera AI", email = "support@axelera.ai"}
@@ -22,6 +22,8 @@ authors = [
 "wasm-ld" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:wasm_ld"
 "lld-link" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:lld_link"
 "llvm-ar" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:llvm_ar"
+"llvm-objcopy" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:llvm_objcopy"
+"llvm-objdump" = "axelera.riscv_llvm_toolchain_minimal.entrypoints:llvm_objdump"
 
 [tool.hatch.version]
 path = "VERSION"

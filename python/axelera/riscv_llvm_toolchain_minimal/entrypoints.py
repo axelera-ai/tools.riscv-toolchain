@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Entrypoint wrappers for RISC-V LLVM minimal toolchain binaries.
 
-The wheel ships only the canonical multicall binaries (clang, ld.lld, llvm-ar).
-Each entrypoint execs one of these with the desired argv[0] so the binary picks
-the right driver mode / target / linker flavour. This avoids shipping multiple
-copies of the same binary inside the wheel, since the wheel (zip) format has
-no portable symlink encoding.
+The wheel ships only the canonical multicall binaries (clang, ld.lld, llvm-ar,
+llvm-objcopy, llvm-objdump). Each entrypoint execs one of these with the desired
+argv[0] so the binary picks the right driver mode / target / linker flavour.
+This avoids shipping multiple copies of the same binary inside the wheel, since
+the wheel (zip) format has no portable symlink encoding.
 
 ld.lld is the canonical lld multicall binary (bit-identical to upstream lld);
 the bare 'lld' name is kept as an entrypoint for completeness but execs ld.lld
@@ -73,3 +73,11 @@ def lld_link() -> NoReturn:
 
 def llvm_ar() -> NoReturn:
     _exec_as("llvm-ar", "llvm-ar")
+
+
+def llvm_objcopy() -> NoReturn:
+    _exec_as("llvm-objcopy", "llvm-objcopy")
+
+
+def llvm_objdump() -> NoReturn:
+    _exec_as("llvm-objdump", "llvm-objdump")

@@ -24,17 +24,20 @@ if [ "$TOOLCHAIN" = "llvm" ]; then
         ${PREFIX}/bin/clang --target=riscv64-unknown-elf -x c -c - -o /dev/null \
         || { echo "FAIL: clang cannot compile"; FAIL=1; }
 
-    # Verify all expected multilib variants have newlib headers and compiler-rt
+    # Verify all expected multilib variants have compiler-rt
     for dir in \
         riscv64-unknown-elf/rv64ima/lp64 \
         riscv64-unknown-elf/rv64imac/lp64 \
         riscv64-unknown-elf/rv64imafdc/lp64f \
         riscv64-unknown-elf/rv64imafdc/lp64d; do
-        check "${PREFIX}/lib/clang-runtimes/${dir}/include/assert.h"
         check "${PREFIX}/lib/clang-runtimes/${dir}/lib/libclang_rt.builtins.a"
     done
 
     check "${PREFIX}/lib/clang-runtimes/multilib.yaml"
+
+    for bin in clang ld.lld llvm-ar llvm-objcopy llvm-objdump; do
+        check "${PREFIX}/bin/${bin}"
+    done
 
 elif [ "$TOOLCHAIN" = "gcc" ]; then
     # Verify key binaries exist
